@@ -11,9 +11,11 @@ To download the IDE, you must first install Python, Mono, Git, and the Textual l
 
 
 <p align="center">
-<img src="Ico/screenshot one.jpeg" alt="Pascal TUI Interface" width="45%">
-<img src="Ico/screenshot two.jpg" alt="Graphical Environment Interface" width="45%">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
 </p>
+
+<p align="center">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
 
 Enter these commands if you are downloading in termux:
 
