@@ -11,7 +11,8 @@ abc-pascal - это IDE для Паскаля, основанная на ком�
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
-команды для установки в termux:
+
+  команды для установки в termux:
 
 
 ```bash
