@@ -10,7 +10,7 @@ abc-pascal-tui is an IDE for Pascal based on the PascalABC.NET compiler, utilizi
 To download the IDE, you must first install Python, Mono, Git, and the Textual library.
 
 <p align="center">
-  <img src="https://private-user-images.githubusercontent.com/232156828/593718056-91439cd7-21ef-4997-a877-8c6254119bff.jpg?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzkwMzI0MDAsIm5iZiI6MTc3OTAzMjEwMCwicGF0aCI6Ii8yMzIxNTY4MjgvNTkzNzE4MDU2LTkxNDM5Y2Q3LTIxZWYtNDk5Ny1hODc3LThjNjI1NDExOWJmZi5qcGc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNTE3JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDUxN1QxNTM1MDBaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT0xNmVkYjNiMzllMGUxMjUxOTBmYTA3MGUwODVkNzI3ZTNhYmFlMTVjMjY1ZDY3ZmI5NmI4ODhhZGEyOTZmYzgzJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZqcGVnIn0.ER3_n_s3n6cGYBrZGDrQiCPqI1N_WV4zc9BWYUv5B3k" alt="Интерфейс Pascal TUI" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
 </p>
 
 <p align="center">
