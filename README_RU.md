@@ -63,7 +63,7 @@ sudo apt install python3 -y
 ```bash
 pip3 install textual
 ```
-(уже говорилось выше что не обязательно качать)
+(уже говорилось выше что не обязательно качать dotnet)
 ```bash
 sudo apt install dotnet-runtime-8.0
 ```
