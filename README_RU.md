@@ -3,7 +3,7 @@
 ## ОПИСАНИЕ 
 abc-pascal - это IDE для Паскаля, основанная на компиляторе PascalABC.NET, но использующий TUI-интерфейс на Python.
 ## скачивание 
-Для скачивания IDE необходимо сначала установить Python, Mono, Git и библиотеку Textual ещё желательно dotnet.
+Для скачивания IDE необходимо сначала установить Python, Mono, Git и библиотеку Textual ещё желательно dotnet (для запуска бинарников которые нормально не работают на моно).
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
@@ -30,7 +30,7 @@ pkg install git -y
 ```bash
 pip install textual
 ```
-(не обязательно его качать.)
+(не обязательно качать dotnet, но желательно.)
 ```bash
 pkg install dotnet-runtime-8.0
 ```
@@ -63,7 +63,7 @@ sudo apt install python3 -y
 ```bash
 pip3 install textual
 ```
-(уже говорилось выше что не обязательно качать dotnet)
+(уже говорилось выше что не обязательно качать dotnet, но желательно)
 ```bash
 sudo apt install dotnet-runtime-8.0
 ```
