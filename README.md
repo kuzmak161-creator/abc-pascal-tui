@@ -7,7 +7,7 @@
 abc-pascal-tui is an IDE for Pascal based on the PascalABC.NET compiler, utilizing a Python-based TUI (Text User Interface).
 
 ## DOWNLOAD
-To download the IDE, you must first install Python, Mono, Git, and the Textual library.
+To download the IDE, you must first install Python, Mono, Git, and the Textual library DotNet isn't necessary yet (it's needed to run binaries that don't work properly on Mono).
 
 
 <p align="center">
@@ -33,6 +33,10 @@ pkg install git -y
 
 ```bash
 pip install textual
+```
+(desirable but not necessary)
+```bash
+pkg install dotnet-runtime-8.0
 ```
 
 ```bash
@@ -62,6 +66,11 @@ sudo apt install python3 -y
 ```bash
 pip3 install textual
 ```
+(again, it is desirable but not necessary)
+```bash
+sudo apt install dotnet-runtime-8.0
+```
+
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
 ```
