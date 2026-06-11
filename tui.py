@@ -16,6 +16,16 @@ COMPILER_PATH = os.path.join(BASE_DIR, "pabcnetc.exe")
 PROJECTS_DIR = os.path.join(BASE_DIR, "Projects")
 # ==========================================================
 
+RUNTIME_CONFIG_TEMPLATE = """{
+  "runtimeOptions": {
+    "tfm": "net472",
+    "framework": {
+      "name": "Microsoft.NETCore.App",
+      "version": "8.0.0"
+    }
+  }
+}"""
+
 def get_project_files() -> list[str]:
     """Вспомогательная функция для получения отсортированного списка файлов"""
     if not os.path.exists(PROJECTS_DIR):
@@ -24,6 +34,14 @@ def get_project_files() -> list[str]:
     files.sort()
     return files
 
+def create_runtime_config(exe_path: str) -> None:
+    """Создаёт .runtimeconfig.json для Dotnet запуска"""
+    config_path = exe_path.replace(".exe", ".runtimeconfig.json")
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(RUNTIME_CONFIG_TEMPLATE)
+    except Exception as e:
+        print(f"[Ошибка создания конфига]: {e}")
 
 class FileMenuScreen(ModalScreen):
     """Экран модального меню со списком файлов"""
@@ -59,7 +77,7 @@ class FileMenuScreen(ModalScreen):
 
             initial_items = []
             files = get_project_files()
-            
+
             # Генерируем ID на основе индексов, чтобы Textual не ругался на точки в именах файлов
             for idx, file in enumerate(files):
                 initial_items.append(ListItem(Label(f" 📄 {file}"), id=f"file_idx_{idx}"))
@@ -120,6 +138,7 @@ class PascalTUI(App):
         super().__init__()
         self.code_backup = ""
         self.current_file = os.path.join(PROJECTS_DIR, "main.pas")
+        self.use_dotnet = False  # Флаг для выбора рантайма
 
         if not os.path.exists(PROJECTS_DIR):
             os.makedirs(PROJECTS_DIR)
@@ -164,13 +183,18 @@ class PascalTUI(App):
                         RadioButton("Стартовать с пустого шаблона", id="set_empty", value=False),
                         id="template_radio"
                     )
+                    yield RadioSet(
+                        RadioButton("Запуск через Mono", id="runtime_mono", value=True),
+                        RadioButton("Запуск через Dotnet", id="runtime_dotnet", value=False),
+                        id="runtime_radio"
+                    )
                     with Horizontal():
                         yield Button("Стереть весь код", variant="error", id="clear_btn")
                         yield Button("Восстановить", variant="warning", id="undo_btn")
 
                 self.log_box = RichLog()
                 yield self.log_box
-        yield Footer()                                     
+        yield Footer()
 
     def action_open_menu(self) -> None:
         self.save_current_file()
@@ -223,6 +247,10 @@ class PascalTUI(App):
                     exe_p = os.path.splitext(target_path)[0] + ".exe"
                     if os.path.exists(exe_p): 
                         os.remove(exe_p)
+                    
+                    config_p = os.path.splitext(target_path)[0] + ".runtimeconfig.json"
+                    if os.path.exists(config_p):
+                        os.remove(config_p)
 
                     self.log_box.write(f"[Файл {filename} удален]\n")
 
@@ -245,8 +273,8 @@ class PascalTUI(App):
             self.action_open_menu()
 
         elif event.button.id == "run_btn":
-            self.log_box.clear()                           
-            self.save_current_file()                       
+            self.log_box.clear()
+            self.save_current_file()
 
             base_name = os.path.splitext(self.current_file)[0]
             exe_path = base_name + ".exe"
@@ -257,22 +285,27 @@ class PascalTUI(App):
                 except Exception:
                     pass
 
-            self.log_box.write(f"Компиляция {os.path.basename(self.current_file)}...\n")                              
+            self.log_box.write(f"Компиляция {os.path.basename(self.current_file)}...\n")
 
             if not os.path.exists(COMPILER_PATH):
                 self.log_box.write(f"[ОШИБКА] Компилятор не найден по пути:\n{COMPILER_PATH}\n")
                 return
 
             # Запускаем компиляцию через mono
-            res = subprocess.run(["mono", COMPILER_PATH, self.current_file], capture_output=True, text=True)          
+            res = subprocess.run(["mono", COMPILER_PATH, self.current_file], capture_output=True, text=True)
 
             # Проверяем код возврата и физическое появление собранного файла
             if res.returncode == 0 and os.path.exists(exe_path):
                 self.log_box.write("[Скомпилировано успешно! Запуск...]\n")
-
-            # Проверяем код возврата и физическое появление собранного файла
-            if res.returncode == 0 and os.path.exists(exe_path):
-                self.log_box.write("[Скомпилировано успешно! Запуск...]\n")
+                
+                # Определяем рантайм для запуска
+                runtime_mono = self.query_one("#runtime_mono", RadioButton)
+                self.use_dotnet = not runtime_mono.value
+                
+                # Если выбран Dotnet — создаём конфиг
+                if self.use_dotnet:
+                    create_runtime_config(exe_path)
+                    self.log_box.write("[Создан .runtimeconfig.json для Dotnet]\n")
 
                 with self.suspend():
                     import os as native_os
@@ -280,9 +313,11 @@ class PascalTUI(App):
                     print(f"=== ЗАПУСК ПРОГРАММЫ ===")
                     print(f"Выполняется файл: {os.path.basename(exe_path)}\n------------------------")
 
-                    # Просто вызываем глобальный subprocess, который у тебя импортирован в первой строке
                     try:
-                        subprocess.run(["mono", exe_path])
+                        if self.use_dotnet:
+                            subprocess.run(["dotnet", exe_path])
+                        else:
+                            subprocess.run(["mono", exe_path])
                     except Exception as e:
                         print(f"\n[Ошибка запуска процесса]: {e}")
 
