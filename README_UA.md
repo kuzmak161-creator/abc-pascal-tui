@@ -3,18 +3,16 @@
 ## опис 
 abc-pascal-tui-termux - це IDE для Паскаля, зароблений на компіляторі PascalABC.NET, але використовує TUI-інтерфейс на Python.
 ## завантаження 
-Для завантаження IDE необхідно встановить Python, Mono, Git и библіотеку Textual.
+Для завантаження IDE необхідно встановить Python, Mono, Git й библіотеку Textual іще dotnet але це не обов'язково.
 
 <p align="center">
-  <img src="https://private-user-images.githubusercontent.com/232156828/593718056-91439cd7-21ef-4997-a877-8c6254119bff.jpg?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzkwMzI0MDAsIm5iZiI6MTc3OTAzMjEwMCwicGF0aCI6Ii8yMzIxNTY4MjgvNTkzNzE4MDU2LTkxNDM5Y2Q3LTIxZWYtNDk5Ny1hODc3LThjNjI1NDExOWJmZi5qcGc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNTE3JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDUxN1QxNTM1MDBaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT0xNmVkYjNiMzllMGUxMjUxOTBmYTA3MGUwODVkNzI3ZTNhYmFlMTVjMjY1ZDY3ZmI5NmI4ODhhZGEyOTZmYzgzJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZqcGVnIn0.ER3_n_s3n6cGYBrZGDrQiCPqI1N_WV4zc9BWYUv5B3k" alt="Интерфейс Pascal TUI" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
 </p>
 
 <p align="center">
-  <img src="https://private-user-images.githubusercontent.com/285278862/593754255-de2eea2e-cbe2-4556-8149-7508e17753b7.jpg?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzkwNTEyNTQsIm5iZiI6MTc3OTA1MDk1NCwicGF0aCI6Ii8yODUyNzg4NjIvNTkzNzU0MjU1LWRlMmVlYTJlLWNiZTItNDU1Ni04MTQ5LTc1MDhlMTc3NTNiNy5qcGc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNTE3JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDUxN1QyMDQ5MTRaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT1iMTY5NDZmYWIzNTVjZmJkNzdlMDc0YzQ3OTZiYTZlNGE0ZjA2NWQ5OTE0N2NmYjc5MDU1MTZlNTM1MGRhZWUwJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZqcGVnIn0.1SIcbI-UnMthAN7KT2s_euBF8jmwKXsZxAO5Mwr5ZSU" alt="Интерфейс в граф окружении" width="400">
-</p> 
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
 
-введите команди в термінал:
-
+команди для встановлення у termux:
 
 ```bash
 pkg install mono -y
@@ -31,17 +29,52 @@ pkg install git -y
 ```bash
 pip install textual
 ```
+(не обов'язково завантажувати dotnet)
 ```bash
-git clone https://github.com/kuzmak161-creator/abc-pascal-tui-termux
+pkg install dotnet-runtime-8.0
 ```
 
 ```bash
-cd abc-pascal-tui-termux
+git clone https://github.com/kuzmak161-creator/abc-pascal-tui
+```
+
+```bash
+cd abc-pascal-tui
 ```
 
 запуск 
 ```bash
 python tui.py
+```
+
+команди для встановлення у Debian (перевірено тільки на arm версії)
+
+```bash
+sudo apt install mono-complete 
+```
+```bash
+sudo apt install git -y
+```
+```bash
+sudo apt install python3 -y
+```
+```bash
+pip3 install textual
+```
+(не обов'язково завантажувати dotnet)
+```bash
+sudo apt install dotnet-runtime-8.0
+```
+
+```bash
+git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
+```
+```bash
+cd abc-pascal-tui
+```
+запуск
+```bash
+python3 tui.py
 ```
 
 ### в релизах більш рідко виходять оновлення.
