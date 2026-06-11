@@ -34,7 +34,7 @@ pkg install git -y
 ```bash
 pip install textual
 ```
-(You don't have to download dotnet. )
+(It is advisable to download DotNet, but not necessary.)
 ```bash
 pkg install dotnet-runtime-8.0
 ```
@@ -66,7 +66,7 @@ sudo apt install python3 -y
 ```bash
 pip3 install textual
 ```
-(You don't have to download dotnet.)
+(It is advisable to download DotNet, but not necessary. )
 ```bash
 sudo apt install dotnet-runtime-8.0
 ```
