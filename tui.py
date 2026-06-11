@@ -1,8 +1,9 @@
 import subprocess
 import os
+import shutil
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Header, Footer, Button, TextArea, RichLog, RadioSet, RadioButton, Label, ListView, ListItem
+from textual.widgets import Header, Footer, Button, TextArea, RichLog, RadioSet, RadioButton, Label, ListView, ListItem, Input
 from textual.containers import Horizontal, Vertical
 
 TEMPLATE_HELLO_WORLD = "begin\n  writeln('Hello World');\nend."
@@ -16,17 +17,103 @@ COMPILER_PATH = os.path.join(BASE_DIR, "pabcnetc.exe")
 PROJECTS_DIR = os.path.join(BASE_DIR, "Projects")
 # ==========================================================
 
+RUNTIME_CONFIG_TEMPLATE = """{
+  "runtimeOptions": {
+    "tfm": "net472",
+    "framework": {
+      "name": "Microsoft.NETCore.App",
+      "version": "8.0.0"
+    }
+  }
+}"""
+
 def get_project_files() -> list[str]:
-    """Вспомогательная функция для получения отсортированного списка файлов"""
     if not os.path.exists(PROJECTS_DIR):
         return []
     files = [f for f in os.listdir(PROJECTS_DIR) if f.endswith(".pas")]
     files.sort()
     return files
 
+def create_runtime_config(exe_path: str) -> None:
+    config_path = exe_path.replace(".exe", ".runtimeconfig.json")
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(RUNTIME_CONFIG_TEMPLATE)
+    except Exception as e:
+        print(f"[Ошибка создания конфига]: {e}")
 
+def get_auto_filename() -> str:
+    """Автоматически генерирует имя project_N"""
+    count = 1
+    while os.path.exists(os.path.join(PROJECTS_DIR, f"project_{count}.pas")):
+        count += 1
+    return f"project_{count}"
+
+# ==========================================================
+# ДИАЛОГ ВВОДА ИМЕНИ ФАЙЛА (для создания и переименования)
+# ==========================================================
+class InputDialog(ModalScreen):
+    """Простой диалог с полем ввода"""
+
+    CSS = """
+    InputDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    #dialog_container {
+        width: 50;
+        height: auto;
+        background: $panel;
+        border: thick $primary;
+        padding: 1 2;
+    }
+    #dialog_input {
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+    #dialog_buttons {
+        height: 3;
+    }
+    .dialog_btn {
+        margin-right: 1;
+    }
+    """
+
+    def __init__(self, title: str, placeholder: str = "", default: str = ""):
+        super().__init__()
+        self._title = title
+        self._placeholder = placeholder
+        self._default = default
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog_container"):
+            yield Label(self._title)
+            yield Input(
+                value=self._default,
+                placeholder=self._placeholder,
+                id="dialog_input"
+            )
+            with Horizontal(id="dialog_buttons"):
+                yield Button("✅ ОК", variant="success", id="dialog_ok", classes="dialog_btn")
+                yield Button("❌ Отмена", variant="default", id="dialog_cancel", classes="dialog_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "dialog_ok":
+            value = self.query_one("#dialog_input", Input).value.strip()
+            self.dismiss(value if value else None)
+        elif event.button.id == "dialog_cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        self.dismiss(value if value else None)
+
+
+# ==========================================================
+# ГЛАВНЫЙ ФАЙЛОВЫЙ МЕНЕДЖЕР
+# ==========================================================
 class FileMenuScreen(ModalScreen):
-    """Экран модального меню со списком файлов"""
+    """Улучшенный файловый менеджер"""
 
     CSS = """
     FileMenuScreen {
@@ -34,40 +121,89 @@ class FileMenuScreen(ModalScreen):
         background: rgba(0, 0, 0, 0.5);
     }
     #menu_container {
-        width: 40;
-        height: 70%;
+        width: 48;
+        height: 80%;
         background: $panel;
         border: thick $primary;
         padding: 1;
+    }
+    #search_input {
+        margin-bottom: 1;
     }
     #menu_file_list {
         background: $surface;
         border: solid $primary;
         height: 1fr;
-        margin-top: 1;
         margin-bottom: 1;
     }
     .menu_btn {
         width: 100%;
         margin-bottom: 1;
     }
+    #btn_row1 {
+        height: 3;
+        margin-bottom: 1;
+    }
+    #btn_row2 {
+        height: 3;
+        margin-bottom: 1;
+    }
+    .half_btn {
+        width: 1fr;
+        margin-right: 1;
+    }
     """
+
+    def __init__(self):
+        super().__init__()
+        self._all_files = get_project_files()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="menu_container"):
-            yield Label("📁 ВЫБОР ПРОЕКТА:")
+            yield Label("📁 ФАЙЛОВЫЙ МЕНЕДЖЕР:")
+            yield Input(placeholder="🔍 Поиск...", id="search_input")
 
-            initial_items = []
-            files = get_project_files()
-            
-            # Генерируем ID на основе индексов, чтобы Textual не ругался на точки в именах файлов
-            for idx, file in enumerate(files):
-                initial_items.append(ListItem(Label(f" 📄 {file}"), id=f"file_idx_{idx}"))
+            items = [
+                ListItem(Label(f" 📄 {f}"), id=f"file_idx_{i}")
+                for i, f in enumerate(self._all_files)
+            ]
+            yield ListView(*items, id="menu_file_list")
 
-            yield ListView(*initial_items, id="menu_file_list")
-            yield Button("➕ Новый файл", variant="primary", id="menu_create_btn", classes="menu_btn")
-            yield Button("🗑️ Удалить выбранный", variant="error", id="menu_delete_btn", classes="menu_btn")
+            with Horizontal(id="btn_row1"):
+                yield Button("➕ Новый файл", variant="primary", id="menu_create_btn", classes="half_btn")
+                yield Button("📋 Копировать", variant="default", id="menu_copy_btn", classes="half_btn")
+
+            with Horizontal(id="btn_row2"):
+                yield Button("✏️ Переименовать", variant="warning", id="menu_rename_btn", classes="half_btn")
+                yield Button("🗑️ Удалить", variant="error", id="menu_delete_btn", classes="half_btn")
+
             yield Button("❌ Закрыть меню", variant="default", id="menu_close_btn", classes="menu_btn")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Живой поиск по файлам"""
+        if event.input.id != "search_input":
+            return
+        query = event.value.lower().strip()
+
+        filtered = [
+            f for f in self._all_files
+            if query in f.lower()
+        ] if query else self._all_files
+
+        async def rebuild():
+            file_list = self.query_one("#menu_file_list", ListView)
+            await file_list.clear()
+            for f in filtered:
+                orig_idx = self._all_files.index(f)
+                await file_list.append(ListItem(Label(f" 📄 {f}"), id=f"file_idx_{orig_idx}"))
+
+        self.call_after_refresh(rebuild)
+
+    def _get_highlighted_id(self) -> str | None:
+        file_list = self.query_one("#menu_file_list", ListView)
+        if file_list.highlighted_child and file_list.highlighted_child.id:
+            return file_list.highlighted_child.id
+        return None
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item and event.item.id:
@@ -76,14 +212,29 @@ class FileMenuScreen(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "menu_close_btn":
             self.dismiss(None)
+
         elif event.button.id == "menu_create_btn":
             self.dismiss(("create", True))
+
         elif event.button.id == "menu_delete_btn":
-            file_list = self.query_one("#menu_file_list", ListView)
-            if file_list.highlighted_child and file_list.highlighted_child.id:
-                self.dismiss(("delete", file_list.highlighted_child.id))
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("delete", hid))
+
+        elif event.button.id == "menu_rename_btn":
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("rename", hid))
+
+        elif event.button.id == "menu_copy_btn":
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("copy", hid))
 
 
+# ==========================================================
+# ГЛАВНОЕ ПРИЛОЖЕНИЕ
+# ==========================================================
 class PascalTUI(App):
     BINDINGS = [
         ("q", "quit", "Выйти"),
@@ -120,6 +271,7 @@ class PascalTUI(App):
         super().__init__()
         self.code_backup = ""
         self.current_file = os.path.join(PROJECTS_DIR, "main.pas")
+        self.use_dotnet = False
 
         if not os.path.exists(PROJECTS_DIR):
             os.makedirs(PROJECTS_DIR)
@@ -164,27 +316,32 @@ class PascalTUI(App):
                         RadioButton("Стартовать с пустого шаблона", id="set_empty", value=False),
                         id="template_radio"
                     )
+                    yield RadioSet(
+                        RadioButton("Запуск через Mono", id="runtime_mono", value=True),
+                        RadioButton("Запуск через Dotnet", id="runtime_dotnet", value=False),
+                        id="runtime_radio"
+                    )
                     with Horizontal():
                         yield Button("Стереть весь код", variant="error", id="clear_btn")
                         yield Button("Восстановить", variant="warning", id="undo_btn")
 
                 self.log_box = RichLog()
                 yield self.log_box
-        yield Footer()                                     
+        yield Footer()
 
     def action_open_menu(self) -> None:
         self.save_current_file()
         self.push_screen(FileMenuScreen(), self.handle_menu_result)
 
-    def handle_menu_result(self, result: tuple) -> None:
+    def handle_menu_result(self, result) -> None:
         if not result:
             return
 
         action_type, data = result
         files = get_project_files()
 
+        # ===== ОТКРЫТЬ ФАЙЛ =====
         if action_type == "select":
-            # Извлекаем индекс из ID (например, "file_idx_0" -> 0)
             idx = int(data.split("_")[-1])
             if idx < len(files):
                 filename = files[idx]
@@ -194,24 +351,19 @@ class PascalTUI(App):
                 self.query_one("#cur_file_lbl").update("Активен: " + filename)
                 self.log_box.write(f"[Открыт файл: {filename}]\n")
 
+        # ===== СОЗДАТЬ ФАЙЛ =====
         elif action_type == "create":
-            count = 1
-            while os.path.exists(os.path.join(PROJECTS_DIR, f"project_{count}.pas")):
-                count += 1
-            new_filename = f"project_{count}.pas"
-            self.current_file = os.path.join(PROJECTS_DIR, new_filename)
+            auto_name = get_auto_filename()
+            self.push_screen(
+                InputDialog(
+                    title="📝 Введите имя файла (без .pas):",
+                    placeholder=auto_name,
+                    default=""
+                ),
+                lambda name: self._do_create(name, auto_name)
+            )
 
-            radio_hello = self.query_one("#set_hello", RadioButton)
-            chosen_template = TEMPLATE_HELLO_WORLD if radio_hello.value else TEMPLATE_EMPTY
-
-            with open(self.current_file, "w", encoding="utf-8") as f:
-                f.write(chosen_template)
-
-            self.editor.text = chosen_template
-            self.query_one("#cur_file_lbl").update("Активен: " + new_filename)
-            self.log_box.write(f"[Создан файл: {new_filename}]\n")
-            self.action_open_menu()
-
+        # ===== УДАЛИТЬ ФАЙЛ =====
         elif action_type == "delete":
             idx = int(data.split("_")[-1])
             if idx < len(files):
@@ -220,15 +372,16 @@ class PascalTUI(App):
 
                 if os.path.exists(target_path):
                     os.remove(target_path)
-                    exe_p = os.path.splitext(target_path)[0] + ".exe"
-                    if os.path.exists(exe_p): 
-                        os.remove(exe_p)
+                    for ext in [".exe", ".runtimeconfig.json"]:
+                        p = os.path.splitext(target_path)[0] + ext
+                        if os.path.exists(p):
+                            os.remove(p)
 
                     self.log_box.write(f"[Файл {filename} удален]\n")
 
-                    remaining_files = get_project_files()
-                    if remaining_files:
-                        self.current_file = os.path.join(PROJECTS_DIR, remaining_files[0])
+                    remaining = get_project_files()
+                    if remaining:
+                        self.current_file = os.path.join(PROJECTS_DIR, remaining[0])
                     else:
                         self.current_file = os.path.join(PROJECTS_DIR, "main.pas")
                         with open(self.current_file, "w", encoding="utf-8") as f:
@@ -236,17 +389,121 @@ class PascalTUI(App):
 
                     with open(self.current_file, "r", encoding="utf-8") as f:
                         self.editor.text = f.read()
-
                     self.query_one("#cur_file_lbl").update("Активен: " + os.path.basename(self.current_file))
             self.action_open_menu()
+
+        # ===== ПЕРЕИМЕНОВАТЬ ФАЙЛ =====
+        elif action_type == "rename":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                old_name = files[idx]
+                old_base = os.path.splitext(old_name)[0]
+                self.push_screen(
+                    InputDialog(
+                        title=f"✏️ Переименовать '{old_name}':",
+                        placeholder="новое_имя",
+                        default=old_base
+                    ),
+                    lambda new_name, on=old_name: self._do_rename(on, new_name)
+                )
+
+        # ===== КОПИРОВАТЬ ФАЙЛ =====
+        elif action_type == "copy":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                src_name = files[idx]
+                src_base = os.path.splitext(src_name)[0]
+                auto_copy = f"{src_base}_copy"
+                self.push_screen(
+                    InputDialog(
+                        title=f"📋 Копия файла '{src_name}':",
+                        placeholder=auto_copy,
+                        default=auto_copy
+                    ),
+                    lambda new_name, sn=src_name: self._do_copy(sn, new_name)
+                )
+
+    def _do_create(self, name: str | None, auto_name: str) -> None:
+        """Создаёт новый файл"""
+        filename = (name if name else auto_name) + ".pas"
+        # Убираем .pas если пользователь сам написал расширение
+        if filename.endswith(".pas.pas"):
+            filename = filename[:-4]
+
+        self.current_file = os.path.join(PROJECTS_DIR, filename)
+        radio_hello = self.query_one("#set_hello", RadioButton)
+        chosen_template = TEMPLATE_HELLO_WORLD if radio_hello.value else TEMPLATE_EMPTY
+
+        with open(self.current_file, "w", encoding="utf-8") as f:
+            f.write(chosen_template)
+
+        self.editor.text = chosen_template
+        self.query_one("#cur_file_lbl").update("Активен: " + filename)
+        self.log_box.write(f"[Создан файл: {filename}]\n")
+        self.action_open_menu()
+
+    def _do_rename(self, old_name: str, new_name: str | None) -> None:
+        """Переименовывает файл"""
+        if not new_name:
+            self.action_open_menu()
+            return
+
+        if not new_name.endswith(".pas"):
+            new_name += ".pas"
+
+        old_path = os.path.join(PROJECTS_DIR, old_name)
+        new_path = os.path.join(PROJECTS_DIR, new_name)
+
+        if os.path.exists(new_path):
+            self.log_box.write(f"[Ошибка: файл {new_name} уже существует]\n")
+            self.action_open_menu()
+            return
+
+        os.rename(old_path, new_path)
+
+        # Переименовываем .exe и конфиг если есть
+        for ext in [".exe", ".runtimeconfig.json"]:
+            old_p = os.path.splitext(old_path)[0] + ext
+            new_p = os.path.splitext(new_path)[0] + ext
+            if os.path.exists(old_p):
+                os.rename(old_p, new_p)
+
+        # Если переименован текущий файл — обновляем путь
+        if self.current_file == old_path:
+            self.current_file = new_path
+            self.query_one("#cur_file_lbl").update("Активен: " + new_name)
+
+        self.log_box.write(f"[Переименован: {old_name} → {new_name}]\n")
+        self.action_open_menu()
+
+    def _do_copy(self, src_name: str, new_name: str | None) -> None:
+        """Копирует файл"""
+        if not new_name:
+            self.action_open_menu()
+            return
+
+        if not new_name.endswith(".pas"):
+            new_name += ".pas"
+
+        src_path = os.path.join(PROJECTS_DIR, src_name)
+        dst_path = os.path.join(PROJECTS_DIR, new_name)
+
+        if os.path.exists(dst_path):
+            self.log_box.write(f"[Ошибка: файл {new_name} уже существует]\n")
+            self.action_open_menu()
+            return
+
+        shutil.copy2(src_path, dst_path)
+        self.log_box.write(f"[Скопирован: {src_name} → {new_name}]\n")
+        self.action_open_menu()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "open_menu_btn":
             self.action_open_menu()
 
         elif event.button.id == "run_btn":
-            self.log_box.clear()                           
-            self.save_current_file()                       
+            self.log_box.clear()
+            self.save_current_file()
 
             base_name = os.path.splitext(self.current_file)[0]
             exe_path = base_name + ".exe"
@@ -257,22 +514,23 @@ class PascalTUI(App):
                 except Exception:
                     pass
 
-            self.log_box.write(f"Компиляция {os.path.basename(self.current_file)}...\n")                              
+            self.log_box.write(f"Компиляция {os.path.basename(self.current_file)}...\n")
 
             if not os.path.exists(COMPILER_PATH):
                 self.log_box.write(f"[ОШИБКА] Компилятор не найден по пути:\n{COMPILER_PATH}\n")
                 return
 
-            # Запускаем компиляцию через mono
-            res = subprocess.run(["mono", COMPILER_PATH, self.current_file], capture_output=True, text=True)          
+            res = subprocess.run(["mono", COMPILER_PATH, self.current_file], capture_output=True, text=True)
 
-            # Проверяем код возврата и физическое появление собранного файла
             if res.returncode == 0 and os.path.exists(exe_path):
                 self.log_box.write("[Скомпилировано успешно! Запуск...]\n")
 
-            # Проверяем код возврата и физическое появление собранного файла
-            if res.returncode == 0 and os.path.exists(exe_path):
-                self.log_box.write("[Скомпилировано успешно! Запуск...]\n")
+                runtime_mono = self.query_one("#runtime_mono", RadioButton)
+                self.use_dotnet = not runtime_mono.value
+
+                if self.use_dotnet:
+                    create_runtime_config(exe_path)
+                    self.log_box.write("[Создан .runtimeconfig.json для Dotnet]\n")
 
                 with self.suspend():
                     import os as native_os
@@ -280,9 +538,11 @@ class PascalTUI(App):
                     print(f"=== ЗАПУСК ПРОГРАММЫ ===")
                     print(f"Выполняется файл: {os.path.basename(exe_path)}\n------------------------")
 
-                    # Просто вызываем глобальный subprocess, который у тебя импортирован в первой строке
                     try:
-                        subprocess.run(["mono", exe_path])
+                        if self.use_dotnet:
+                            subprocess.run(["dotnet", exe_path])
+                        else:
+                            subprocess.run(["mono", exe_path])
                     except Exception as e:
                         print(f"\n[Ошибка запуска процесса]: {e}")
 
@@ -302,7 +562,7 @@ class PascalTUI(App):
             self.code_backup = self.editor.text
             self.editor.text = "begin\n  \nend."
         elif event.button.id == "undo_btn":
-            if self.code_backup: 
+            if self.code_backup:
                 self.editor.text = self.code_backup
 
     def action_toggle_settings(self) -> None:
