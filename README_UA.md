@@ -3,7 +3,7 @@
 ## опис 
 abc-pascal-tui-termux - це IDE для Паскаля, зароблений на компіляторі PascalABC.NET, але використовує TUI-інтерфейс на Python.
 ## завантаження 
-Для завантаження IDE необхідно встановить Python, Mono, Git й библіотеку Textual.
+Для завантаження IDE необхідно встановить Python, Mono, Git й библіотеку Textual іще dotnet але це не обов'язково.
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
@@ -13,7 +13,6 @@ abc-pascal-tui-termux - це IDE для Паскаля, зароблений н�
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
 
 команди для встановлення у termux:
-
 
 ```bash
 pkg install mono -y
@@ -30,6 +29,11 @@ pkg install git -y
 ```bash
 pip install textual
 ```
+(не обов'язково завантажувати dotnet)
+```bash
+pkg install dotnet-runtime-8.0
+```
+
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui
 ```
@@ -57,6 +61,11 @@ sudo apt install python3 -y
 ```bash
 pip3 install textual
 ```
+(не обов'язково завантажувати dotnet)
+```bash
+sudo apt install dotnet-runtime-8.0
+```
+
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
 ```
