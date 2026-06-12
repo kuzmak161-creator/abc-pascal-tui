@@ -17,7 +17,7 @@ To download the IDE, you must first install Python, Mono, Git, and the Textual l
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
 
-Enter these commands if you are downloading in termux:
+# Instructions for Termux
 
 ```bash
 pkg install mono -y
@@ -51,7 +51,7 @@ Launch:
 ```bash
 python tui.py
 ```
-commands for installation in Debian (only tested with Arm versions)
+# instructions for Debian (only tested with Arm versions)
 
 
 ```bash
