@@ -1,6 +1,6 @@
 [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 
--
+--
 
 
 ## DESCRIPTION
