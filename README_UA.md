@@ -1,6 +1,7 @@
 [![English](https://img.shields.io/badge/Language-English-red?style=for-the-badge)](README.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 
 ---
+![Logo](logo.svg)
 
 ## ОПИС
 
