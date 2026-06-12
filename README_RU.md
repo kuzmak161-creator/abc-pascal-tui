@@ -1,9 +1,14 @@
 [![English](https://img.shields.io/badge/Language-English-red?style=for-the-badge)](README.md) [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md)
 
-## ОПИСАНИЕ 
-abc-pascal - это IDE для Паскаля, основанная на компиляторе PascalABC.NET, но использующий TUI-интерфейс на Python.
-## скачивание 
-Для скачивания IDE необходимо сначала установить Python, Mono, Git и библиотеку Textual ещё желательно dotnet (для запуска бинарников которые нормально не работают на моно).
+---
+
+## ОПИСАНИЕ
+
+abc-pascal-tui — это IDE для Паскаля, основанная на компиляторе PascalABC.NET, использующая TUI-интерфейс на Python.
+
+## СКАЧИВАНИЕ
+
+Для скачивания IDE необходимо сначала установить Python, Mono, Git и библиотеку Textual. DotNet пока не обязателен (нужен для запуска бинарников, которые нормально не работают на Mono).
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
@@ -11,9 +16,11 @@ abc-pascal - это IDE для Паскаля, основанная на ком�
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
+</p>
 
-  команды для установки в termux:
+---
 
+# Инструкция для Termux
 
 ```bash
 pkg install mono -y
@@ -30,7 +37,8 @@ pkg install git -y
 ```bash
 pip install textual
 ```
-(не обязательно качать dotnet, но желательно.)
+
+(Желательно установить DotNet, но не обязательно.)
 ```bash
 pkg install dotnet-runtime-8.0
 ```
@@ -43,27 +51,34 @@ git clone https://github.com/kuzmak161-creator/abc-pascal-tui
 cd abc-pascal-tui
 ```
 
-Запускаем
+Запуск:
 ```bash
 python tui.py
 ```
 
-команды для установки дебиан (проверено только на arm версии)
+---
 
+# Инструкция для Debian
+
+(Проверено только на ARM-версии.)
 
 ```bash
 sudo apt install mono-complete 
 ```
+
 ```bash
 sudo apt install git -y
 ```
+
 ```bash
 sudo apt install python3 -y
 ```
+
 ```bash
 pip3 install textual
 ```
-(уже говорилось выше что не обязательно качать dotnet, но желательно)
+
+(Желательно установить DotNet, но не обязательно.)
 ```bash
 sudo apt install dotnet-runtime-8.0
 ```
@@ -71,24 +86,31 @@ sudo apt install dotnet-runtime-8.0
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
 ```
+
 ```bash
 cd abc-pascal-tui
 ```
-запуск 
+
+Запуск:
 ```bash
 python3 tui.py
 ```
 
-### команда для обновления папки с ide (удаляет все файлы в папке projects)
+---
+
+### Команда для обновления папки с IDE
+
+(Удаляет все файлы в папке projects.)
 ```bash
 cd ~/abc-pascal-tui && git pull
 ```
 
+### В официальных релизах обновления выходят реже.
 
-### в релизах более редко выходят обновления.
+---
 
 ## Лицензия
 
-- **Компилятор PascalABC.NET** - GNU Lesser General Public License v3 (LGPL v3) https://github.com/pascalabcnet/pascalabcnet
+- **Компилятор PascalABC.NET** — GNU Lesser General Public License v3 (LGPL v3) https://github.com/pascalabcnet/pascalabcnet
 
 Код интерфейса (tui.py) распространяется на условиях MIT License.
