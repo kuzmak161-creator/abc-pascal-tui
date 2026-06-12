@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <defs>
+    <clipPath id="circle-clip">
+      <circle cx="200" cy="200" r="185"/>
+    </clipPath>
+    <radialGradient id="bg-grad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1a2a1a"/>
+      <stop offset="100%" stop-color="#0a0f0a"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Circle background -->
+  <circle cx="200" cy="200" r="185" fill="url(#bg-grad)"/>
+
+  <!-- Background code text (clipped to circle) -->
+  <g clip-path="url(#circle-clip)" opacity="0.18" font-family="'Courier New', monospace" font-size="13" fill="#44ff44">
+    <text x="20" y="40">Program anal;</text>
+    <text x="20" y="58">Begin</text>
+    <text x="20" y="76">  Write ('hello world');</text>
+    <text x="20" y="94">End.</text>
+    <text x="20" y="122">Program anal;</text>
+    <text x="20" y="140">Begin</text>
+    <text x="20" y="158">  Write ('hello world');</text>
+    <text x="20" y="176">End.</text>
+    <text x="20" y="204">Program anal;</text>
+    <text x="20" y="222">Begin</text>
+    <text x="20" y="240">  Write ('hello world');</text>
+    <text x="20" y="258">End.</text>
+    <text x="20" y="286">Program anal;</text>
+    <text x="20" y="304">Begin</text>
+    <text x="20" y="322">  Write ('hello world');</text>
+    <text x="20" y="340">End.</text>
+    <text x="20" y="368">Program anal;</text>
+    <text x="20" y="386">Begin</text>
+    <text x="160" y="40">Program anal;</text>
+    <text x="160" y="58">Begin</text>
+    <text x="160" y="76">  Write ('hello world');</text>
+    <text x="160" y="94">End.</text>
+    <text x="160" y="122">Program anal;</text>
+    <text x="160" y="140">Begin</text>
+    <text x="160" y="158">  Write ('hello world');</text>
+    <text x="160" y="176">End.</text>
+    <text x="160" y="204">Program anal;</text>
+    <text x="160" y="222">Begin</text>
+    <text x="160" y="240">  Write ('hello world');</text>
+    <text x="160" y="258">End.</text>
+    <text x="160" y="286">Program anal;</text>
+    <text x="160" y="304">Begin</text>
+    <text x="160" y="322">  Write ('hello world');</text>
+    <text x="160" y="340">End.</text>
+    <text x="160" y="368">Program anal;</text>
+    <text x="160" y="386">Begin</text>
+  </g>
+
+  <!-- Outer ring -->
+  <circle cx="200" cy="200" r="185" fill="none" stroke="#33cc33" stroke-width="3" opacity="0.8"/>
+  <!-- Inner ring -->
+  <circle cx="200" cy="200" r="178" fill="none" stroke="#33cc33" stroke-width="1" opacity="0.3"/>
+
+  <!-- Main title: Abc pascal -->
+  <text
+    x="200" y="190"
+    font-family="'Comic Sans MS', 'Comic Sans', cursive"
+    font-size="46"
+    font-weight="bold"
+    text-anchor="middle"
+    fill="#ffffff"
+    filter="url(#glow)"
+  >Abc pascal</text>
+
+  <!-- Subtitle: TUI -->
+  <text
+    x="200" y="242"
+    font-family="'Comic Sans MS', 'Comic Sans', cursive"
+    font-size="38"
+    font-weight="bold"
+    text-anchor="middle"
+    fill="#33ff33"
+  >TUI</text>
+
+  <!-- Glow filter -->
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
