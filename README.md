@@ -51,7 +51,8 @@ Launch:
 ```bash
 python tui.py
 ```
-# instructions for Debian (only tested with Arm versions)
+# instructions for Debian 
+(only tested with Arm versions)
 
 
 ```bash
