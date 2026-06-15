@@ -10,12 +10,13 @@ abc-pascal-tui is an IDE for Pascal based on the PascalABC.NET compiler, utilizi
 To download the IDE, you must first install Python, Mono, Git, and the Textual library DotNet isn't necessary yet (it's needed to run binaries that don't work properly on Mono).
 
 
-</p align="center">
+<p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
-</p>
+<p>
 
-</p align="center">
+<p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
+<p>
 
 # Instructions for Termux
 
