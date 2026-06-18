@@ -100,8 +100,6 @@ python3 tui.py
 ---
 
 ### Команда для оновлення папки з IDE
-
-(Видаляє всі файли в папці projects.)
 ```bash
 cd ~/abc-pascal-tui && git pull
 ```
