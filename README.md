@@ -85,7 +85,6 @@ python3 tui.py
 ```
 ---
 ### command to update folder with ide. 
-(deletes all files that were in the projects folder)
 ```bash
 cd ~/abc-pascal-tui && git pull
 ```
