@@ -1,4 +1,5 @@
-[![English](https://img.shields.io/badge/Language-English-red?style=for-the-badge)](README.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
+[![English](https://img.shields.io/badge/Language-English-red?style=for-the-badge)](README.md)
+[![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 
 ---
 ![Logo](logo.svg)
@@ -7,16 +8,16 @@
 
 abc-pascal-tui — це IDE для Паскаля, заснована на компіляторі PascalABC.NET, що використовує TUI-інтерфейс на Python.
 
-## ЗАВАНТАЖЕННЯ
+## ВИМОГИ
 
-Для завантаження IDE необхідно спочатку встановити Python, Mono, Git та бібліотеку Textual. DotNet поки що не обов'язковий (потрібен для запуску бінарників, які нормально не працюють на Mono).
+Перед встановленням IDE переконайтеся, що у вас встановлені Python, Mono, Git та бібліотека Textual. DotNet поки не обов'язковий (він потрібен для запуску бінарників, які некоректно працюють під Mono).
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Інтерфейс Pascal TUI" width="400">
 </p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Інтерфейс у граф оточенні" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Інтерфейс у графічному середовищі" width="400">
 </p>
 
 ---
@@ -40,6 +41,7 @@ pip install textual
 ```
 
 (Бажано встановити DotNet, але не обов'язково.)
+
 ```bash
 pkg install dotnet-runtime-8.0
 ```
@@ -52,14 +54,35 @@ git clone https://github.com/kuzmak161-creator/abc-pascal-tui
 cd abc-pascal-tui
 ```
 
-Запуск:
+Встановлення
+
+Після клонування запустіть інсталятор з кореня репозиторію:
+
 ```bash
-python tui.py
+bash install.sh
+```
+
+Скрипт попросить вибрати мову (English / Русский / Українська), після чого:
+
+· скопіює всі файли проекту (включно зі скриптом tui) до /usr/local/share/abc-pascal-tui (або $PREFIX/share/abc-pascal-tui у Termux, якщо задана змінна $PREFIX);
+· створить команду pascal-tui у /usr/local/bin (або $PREFIX/bin), яка запускає встановлений скрипт tui;
+· видалить себе після успішного встановлення.
+
+Після встановлення ви зможете запускати IDE з будь-якого місця командою:
+
+```bash
+pascal-tui
+```
+
+Налаштування будуть зберігатися в:
+
+```
+~/.config/abc-pascal-tui/settings.json
 ```
 
 ---
 
-# Інструкція для Debian
+Інструкція для Debian
 
 (Перевірено лише на ARM-версії.)
 
@@ -80,6 +103,7 @@ pip3 install textual
 ```
 
 (Бажано встановити DotNet, але не обов'язково.)
+
 ```bash
 sudo apt install dotnet-runtime-8.0
 ```
@@ -92,24 +116,31 @@ git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
 cd abc-pascal-tui
 ```
 
-Запуск:
+Запустіть інсталятор:
+
 ```bash
-python3 tui.py
+bash install.sh
 ```
 
 ---
 
-### Команда для оновлення папки з IDE
+Команда для оновлення папки з IDE
+
 ```bash
 cd ~/abc-pascal-tui && git pull
 ```
 
-### В офіційних релізах оновлення виходять рідше.
+```bash
+bash install.sh
+```
+
+В офіційних релізах оновлення виходять рідше.
 
 ---
 
-## Ліцензія
+Ліцензія
 
-- **Компілятор PascalABC.NET** — GNU Lesser General Public License v3 (LGPL v3) https://github.com/pascalabcnet/pascalabcnet
+· Компілятор PascalABC.NET — GNU Lesser General Public License v3 (LGPL v3) https://github.com/pascalabcnet/pascalabcnet
 
-Код інтерфейсу (tui.py) поширюється на умовах MIT License.
+Код інтерфейсу (tui) поширюється на умовах MIT License.
+

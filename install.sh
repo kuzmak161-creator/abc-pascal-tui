@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# --- Выбор языка ---
+# --- Выбор языка (согласно README) ---
 echo "Select language / Выберите язык:"
 echo "1) English"
 echo "2) Русский"
@@ -10,13 +10,13 @@ read -p "Enter number / Введите номер: " LANG_CHOICE
 case $LANG_CHOICE in
     1)
         MSG_WELCOME="Installing abc-pascal-tui..."
-        MSG_CHECK="Error: File 'tui.py' not found in current directory."
+        MSG_CHECK="Error: File 'tui' not found in current directory."
         MSG_RUN_ROOT="Please run the script from the root of the abc-pascal-tui repository."
         MSG_MKDIR="Creating directories..."
         MSG_MKDIR_FAIL="Failed to create directory"
         MSG_COPY="Copying files to"
         MSG_RSYNC_FAIL="rsync not found, using cp -r"
-        MSG_COPY_FAIL="Error: tui.py was not copied!"
+        MSG_COPY_FAIL="Error: tui was not copied!"
         MSG_CREATE_CMD="Creating command pascal-tui..."
         MSG_SUCCESS="Installation completed successfully!"
         MSG_RUN_CMD="Now you can run the IDE with the command:"
@@ -27,13 +27,13 @@ case $LANG_CHOICE in
         ;;
     2)
         MSG_WELCOME="Установка abc-pascal-tui..."
-        MSG_CHECK="Ошибка: Файл 'tui.py' не найден в текущей папке."
+        MSG_CHECK="Ошибка: Файл 'tui' не найден в текущей папке."
         MSG_RUN_ROOT="Пожалуйста, запустите скрипт из корня репозитория abc-pascal-tui."
         MSG_MKDIR="Создание директорий..."
         MSG_MKDIR_FAIL="Не удалось создать директорию"
         MSG_COPY="Копирование файлов в"
         MSG_RSYNC_FAIL="rsync не найден, используется cp -r"
-        MSG_COPY_FAIL="Ошибка: tui.py не скопирован!"
+        MSG_COPY_FAIL="Ошибка: tui не скопирован!"
         MSG_CREATE_CMD="Создание команды pascal-tui..."
         MSG_SUCCESS="Установка успешно завершена!"
         MSG_RUN_CMD="Теперь вы можете запустить IDE командой:"
@@ -44,13 +44,13 @@ case $LANG_CHOICE in
         ;;
     3)
         MSG_WELCOME="Встановлення abc-pascal-tui..."
-        MSG_CHECK="Помилка: Файл 'tui.py' не знайдено в поточній папці."
+        MSG_CHECK="Помилка: Файл 'tui' не знайдено в поточній папці."
         MSG_RUN_ROOT="Будь ласка, запустіть скрипт з кореня репозиторію abc-pascal-tui."
         MSG_MKDIR="Створення директорій..."
         MSG_MKDIR_FAIL="Не вдалося створити директорію"
         MSG_COPY="Копіювання файлів до"
         MSG_RSYNC_FAIL="rsync не знайдено, використовується cp -r"
-        MSG_COPY_FAIL="Помилка: tui.py не скопійовано!"
+        MSG_COPY_FAIL="Помилка: tui не скопійовано!"
         MSG_CREATE_CMD="Створення команди pascal-tui..."
         MSG_SUCCESS="Встановлення успішно завершено!"
         MSG_RUN_CMD="Тепер ви можете запустити IDE командою:"
@@ -65,15 +65,17 @@ case $LANG_CHOICE in
         ;;
 esac
 
-# --- Определение переменных ---
+# --- Определение переменных (согласно README) ---
 PROJECT_NAME="abc-pascal-tui"
 BIN_NAME="pascal-tui"
-SOURCE_BIN="tui.py"
+SOURCE_BIN="tui"  # В репозитории файл называется 'tui' (без расширения)
 
 if [ -n "$PREFIX" ]; then
+    # Termux (используется $PREFIX)
     BIN_DIR="$PREFIX/bin"
     SHARE_DIR="$PREFIX/share/$PROJECT_NAME"
 else
+    # Обычный Linux
     BIN_DIR="/usr/local/bin"
     SHARE_DIR="/usr/local/share/$PROJECT_NAME"
 fi
@@ -94,38 +96,46 @@ echo "$MSG_MKDIR"
 mkdir -p "$BIN_DIR" || { echo "$MSG_MKDIR_FAIL $BIN_DIR"; exit 1; }
 mkdir -p "$SHARE_DIR" || { echo "$MSG_MKDIR_FAIL $SHARE_DIR"; exit 1; }
 
-# --- Копирование файлов ---
+# --- Копирование файлов (согласно README) ---
 echo "$MSG_COPY $SHARE_DIR..."
 
+# Копируем все файлы (включая папки), кроме скриптов и .git
 rsync -av --exclude='install.sh' --exclude='uninstall.sh' --exclude='.git' ./ "$SHARE_DIR/" 2>/dev/null || {
     echo "$MSG_RSYNC_FAIL"
-    find . -maxdepth 1 ! -name 'install.sh' ! -name 'uninstall.sh' ! -name '.git' -exec cp -r {} "$SHARE_DIR/" \;
+    # Используем cp -r с явным исключением
+    for item in *; do
+        if [ "$item" != "install.sh" ] && [ "$item" != "uninstall.sh" ] && [ "$item" != ".git" ]; then
+            cp -r "$item" "$SHARE_DIR/"
+        fi
+    done
 }
 
-if [ ! -f "$SHARE_DIR/tui.py" ]; then
+# Проверяем, что tui скопирован
+if [ ! -f "$SHARE_DIR/tui" ]; then
     echo "$MSG_COPY_FAIL"
     exit 1
 fi
 
-# --- Создание исполняемого файла ---
+# --- Создание команды (согласно README) ---
 echo "$MSG_CREATE_CMD"
 
 cat > "$BIN_DIR/$BIN_NAME" << 'EOF'
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+# Обёртка для запуска abc-pascal-tui
+# Определяем где лежат файлы проекта
 if [ -n "$PREFIX" ]; then
     SHARE_DIR="$PREFIX/share/abc-pascal-tui"
 else
     SHARE_DIR="/usr/local/share/abc-pascal-tui"
 fi
 
-python3 "$SHARE_DIR/tui.py" "$@"
+# Запускаем IDE (используем python3)
+python3 "$SHARE_DIR/tui" "$@"
 EOF
 
 chmod +x "$BIN_DIR/$BIN_NAME"
 
-# --- Проверка ---
+# --- Проверка и финальное сообщение (как в README) ---
 if [ -f "$BIN_DIR/$BIN_NAME" ]; then
     echo ""
     echo "$MSG_SUCCESS"
@@ -144,6 +154,6 @@ else
     exit 1
 fi
 
-# --- Самоудаление скрипта ---
+# --- Самоудаление (как в README) ---
 echo "$MSG_REMOVE"
 rm -- "$0"
