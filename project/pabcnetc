@@ -1,0 +1,4 @@
+#!/bin/bash
+export MONO_IOMAP=all
+mono pabcnetc.exe $@
+

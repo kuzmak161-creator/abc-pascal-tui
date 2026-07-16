@@ -1,0 +1,950 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+from functools import partial
+
+from textual.app import App, ComposeResult
+from textual.command import DiscoveryHit, Hit, Hits, Provider
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    RichLog,
+    TextArea,
+)
+
+TEMPLATE_HELLO_WORLD = "begin\n writeln('Hello World');\nend."
+TEMPLATE_EMPTY = "begin\n \nend."
+
+RUNTIME_CONFIG_TEMPLATE = """{
+"runtimeOptions": {
+"tfm": "net472",
+"framework": {
+"name": "Microsoft.NETCore.App",
+"version": "8.0.0"
+}
+}
+}"""
+
+APP_DIR_NAME = "abc-pascal-tui"
+
+
+# ==========================================================
+# ЛОКАЛИЗАЦИЯ
+# ==========================================================
+STRINGS = {
+    "ru": {
+        "app_title": "PascalTUI",
+        "active_file": "Активен: {name}",
+        "btn_projects": "📁 Проекты ({n})",
+        "btn_run": "Запустить",
+        "btn_settings": "Настройки",
+        "btn_clear": "Стереть весь код",
+        "btn_undo": "Восстановить",
+        "footer_quit": "Выйти",
+        "footer_open_menu": "Открыть меню проектов",
+        "footer_settings": "Настройки",
+        "menu_title": "📁 ФАЙЛОВЫЙ МЕНЕДЖЕР:",
+        "menu_search_ph": "🔍 Поиск...",
+        "menu_new": "➕ Новый файл",
+        "menu_copy": "📋 Копировать",
+        "menu_rename": "✏️ Переименовать",
+        "menu_delete": "🗑️ Удалить",
+        "menu_close": "❌ Закрыть меню",
+        "dlg_ok": "✅ ОК",
+        "dlg_cancel": "❌ Отмена",
+        "dlg_create_title": "📝 Введите имя файла (без .pas):",
+        "dlg_rename_title": "✏️ Переименовать '{name}':",
+        "dlg_copy_title": "📋 Копия файла '{name}':",
+        "log_opened": "[Открыт файл: {name}]\n",
+        "log_deleted": "[Файл {name} удален]\n",
+        "log_renamed": "[Переименован: {old} → {new}]\n",
+        "log_copied": "[Скопирован: {old} → {new}]\n",
+        "log_created": "[Создан файл: {name}]\n",
+        "log_exists": "[Ошибка: файл {name} уже существует]\n",
+        "log_compiling": "Компиляция {name}...\n",
+        "log_no_compiler": "[ОШИБКА] Компилятор не найден.\nИскал в:\n{paths}\nУкажите путь вручную в Настройках (Ctrl+P → \"Путь к компилятору\").\n",
+        "log_compiled_ok": "[Скомпилировано успешно! Запуск...]\n",
+        "log_runtimeconfig": "[Создан .runtimeconfig.json для Dotnet]\n",
+        "log_compile_err": "[Ошибка компиляции!]\n",
+        "run_header": "=== ЗАПУСК ПРОГРАММЫ ===",
+        "run_running": "Выполняется файл: {name}\n------------------------",
+        "run_exc": "\n[Ошибка запуска процесса]: {e}",
+        "run_footer": "\n------------------------",
+        "run_enter": "Программа завершена. Нажмите Enter, чтобы вернуться в IDE...",
+        # command palette / settings
+        "cmd_category": "Настройки",
+        "cmd_template_hello": "Настройки: Шаблон при создании файла → Hello World",
+        "cmd_template_hello_help": "Новые файлы будут начинаться с примера Hello World",
+        "cmd_template_empty": "Настройки: Шаблон при создании файла → Пустой",
+        "cmd_template_empty_help": "Новые файлы будут начинаться с пустого шаблона begin/end",
+        "cmd_runtime_mono": "Настройки: Способ запуска → Mono",
+        "cmd_runtime_mono_help": "Скомпилированные программы будут запускаться через Mono",
+        "cmd_runtime_dotnet": "Настройки: Способ запуска → Dotnet",
+        "cmd_runtime_dotnet_help": "Скомпилированные программы будут запускаться через Dotnet",
+        "cmd_lang_ru": "Настройки: Язык интерфейса → Русский",
+        "cmd_lang_en": "Настройки: Язык интерфейса → English",
+        "cmd_lang_help": "Изменить язык интерфейса IDE",
+        "cmd_set_compiler": "Настройки: Указать путь к компилятору вручную...",
+        "cmd_set_compiler_help": "Открыть диалог для ввода пути к pabcnetc.exe",
+        "cmd_set_projects": "Настройки: Указать папку проектов вручную...",
+        "cmd_set_projects_help": "Открыть диалог для ввода пути к папке с .pas файлами",
+        "cmd_show_paths": "Настройки: Показать текущие пути",
+        "cmd_show_paths_help": "Вывести в лог используемые пути (компилятор, проекты, конфиг)",
+        "dlg_compiler_title": "🔧 Путь к pabcnetc.exe:",
+        "dlg_projects_title": "🗂️ Путь к папке проектов:",
+        "log_settings_saved": "[Настройки сохранены: {desc}]\n",
+        "log_paths": (
+            "[Пути]\n"
+            "  tui.py:      {script}\n"
+            "  Компилятор:  {compiler}\n"
+            "  Проекты:     {projects}\n"
+            "  Конфиг:      {config}\n"
+        ),
+        "log_compiler_not_found_path": "[Ошибка: файл не найден по пути {path}]\n",
+        "log_projects_not_found_path": "[Ошибка: папка не найдена {path}]\n",
+    },
+    "en": {
+        "app_title": "PascalTUI",
+        "active_file": "Active: {name}",
+        "btn_projects": "📁 Projects ({n})",
+        "btn_run": "Run",
+        "btn_settings": "Settings",
+        "btn_clear": "Clear all code",
+        "btn_undo": "Undo",
+        "footer_quit": "Quit",
+        "footer_open_menu": "Open project menu",
+        "footer_settings": "Settings",
+        "menu_title": "📁 FILE MANAGER:",
+        "menu_search_ph": "🔍 Search...",
+        "menu_new": "➕ New file",
+        "menu_copy": "📋 Copy",
+        "menu_rename": "✏️ Rename",
+        "menu_delete": "🗑️ Delete",
+        "menu_close": "❌ Close menu",
+        "dlg_ok": "✅ OK",
+        "dlg_cancel": "❌ Cancel",
+        "dlg_create_title": "📝 Enter file name (without .pas):",
+        "dlg_rename_title": "✏️ Rename '{name}':",
+        "dlg_copy_title": "📋 Copy of '{name}':",
+        "log_opened": "[Opened file: {name}]\n",
+        "log_deleted": "[File {name} deleted]\n",
+        "log_renamed": "[Renamed: {old} → {new}]\n",
+        "log_copied": "[Copied: {old} → {new}]\n",
+        "log_created": "[Created file: {name}]\n",
+        "log_exists": "[Error: file {name} already exists]\n",
+        "log_compiling": "Compiling {name}...\n",
+        "log_no_compiler": "[ERROR] Compiler not found.\nSearched in:\n{paths}\nSet the path manually in Settings (Ctrl+P → \"Compiler path\").\n",
+        "log_compiled_ok": "[Compiled successfully! Running...]\n",
+        "log_runtimeconfig": "[Created .runtimeconfig.json for Dotnet]\n",
+        "log_compile_err": "[Compilation error!]\n",
+        "run_header": "=== RUNNING PROGRAM ===",
+        "run_running": "Running file: {name}\n------------------------",
+        "run_exc": "\n[Process launch error]: {e}",
+        "run_footer": "\n------------------------",
+        "run_enter": "Program finished. Press Enter to return to the IDE...",
+        "cmd_category": "Settings",
+        "cmd_template_hello": "Settings: New file template → Hello World",
+        "cmd_template_hello_help": "New files will start with the Hello World example",
+        "cmd_template_empty": "Settings: New file template → Empty",
+        "cmd_template_empty_help": "New files will start with an empty begin/end template",
+        "cmd_runtime_mono": "Settings: Run using → Mono",
+        "cmd_runtime_mono_help": "Compiled programs will run via Mono",
+        "cmd_runtime_dotnet": "Settings: Run using → Dotnet",
+        "cmd_runtime_dotnet_help": "Compiled programs will run via Dotnet",
+        "cmd_lang_ru": "Settings: Interface language → Russian",
+        "cmd_lang_en": "Settings: Interface language → English",
+        "cmd_lang_help": "Change the IDE interface language",
+        "cmd_set_compiler": "Settings: Set compiler path manually...",
+        "cmd_set_compiler_help": "Open a dialog to enter the path to pabcnetc.exe",
+        "cmd_set_projects": "Settings: Set projects folder manually...",
+        "cmd_set_projects_help": "Open a dialog to enter the path to the .pas files folder",
+        "cmd_show_paths": "Settings: Show current paths",
+        "cmd_show_paths_help": "Print the paths currently in use (compiler, projects, config) to the log",
+        "dlg_compiler_title": "🔧 Path to pabcnetc.exe:",
+        "dlg_projects_title": "🗂️ Path to projects folder:",
+        "log_settings_saved": "[Settings saved: {desc}]\n",
+        "log_paths": (
+            "[Paths]\n"
+            "  tui.py:      {script}\n"
+            "  Compiler:    {compiler}\n"
+            "  Projects:    {projects}\n"
+            "  Config:      {config}\n"
+        ),
+        "log_compiler_not_found_path": "[Error: file not found at {path}]\n",
+        "log_projects_not_found_path": "[Error: folder not found at {path}]\n",
+    },
+}
+
+
+def tr(lang: str, key: str, **kwargs) -> str:
+    table = STRINGS.get(lang, STRINGS["en"])
+    text = table.get(key, STRINGS["en"].get(key, key))
+    return text.format(**kwargs) if kwargs else text
+
+
+# ==========================================================
+# ПУТИ: автоопределение окружения (обычный Linux / Termux)
+# ==========================================================
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TERMUX_PREFIX = os.environ.get("PREFIX", "")
+IS_TERMUX = bool(TERMUX_PREFIX) and "com.termux" in TERMUX_PREFIX
+
+
+def _config_dir() -> str:
+    """~/.config/abc-pascal-tui — одинаково и на обычном Linux, и в Termux."""
+    home = os.path.expanduser("~")
+    path = os.path.join(home, ".config", APP_DIR_NAME)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _candidate_share_dirs() -> list[str]:
+    """Возможные места, где может лежать компилятор/проекты (share-директория)."""
+    candidates = []
+    if IS_TERMUX:
+        candidates.append(os.path.join(TERMUX_PREFIX, "share", APP_DIR_NAME))
+    candidates += [
+        "/usr/local/share/" + APP_DIR_NAME,
+        "/usr/share/" + APP_DIR_NAME,
+        os.path.join(os.path.expanduser("~"), ".local", "share", APP_DIR_NAME),
+        SCRIPT_DIR,  # запуск "переносной" версии рядом со скриптом
+    ]
+    return candidates
+
+
+def _find_share_dir() -> str:
+    """Находит первую share-директорию, где реально лежит компилятор."""
+    for d in _candidate_share_dirs():
+        if os.path.exists(os.path.join(d, "pabcnetc.exe")):
+            return d
+    # Ничего не нашли — берём первый кандидат как место по умолчанию
+    # (Termux -> $PREFIX/share/..., иначе рядом со скриптом)
+    if IS_TERMUX:
+        return os.path.join(TERMUX_PREFIX, "share", APP_DIR_NAME)
+    return SCRIPT_DIR
+
+
+CONFIG_DIR = _config_dir()
+SETTINGS_PATH = os.path.join(CONFIG_DIR, "settings.json")
+
+DEFAULT_SHARE_DIR = _find_share_dir()
+DEFAULT_COMPILER_PATH = os.path.join(DEFAULT_SHARE_DIR, "pabcnetc.exe")
+DEFAULT_PROJECTS_DIR = os.path.join(DEFAULT_SHARE_DIR, "Projects")
+
+DEFAULT_SETTINGS = {
+    "language": "ru",
+    "start_template": "hello",  # "hello" | "empty"
+    "runtime": "mono",  # "mono" | "dotnet"
+    "compiler_path": DEFAULT_COMPILER_PATH,
+    "projects_dir": DEFAULT_PROJECTS_DIR,
+}
+
+
+def load_settings() -> dict:
+    settings = dict(DEFAULT_SETTINGS)
+    if os.path.exists(SETTINGS_PATH):
+        try:
+            with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                settings.update({k: v for k, v in data.items() if k in DEFAULT_SETTINGS})
+        except Exception:
+            pass
+    return settings
+
+
+def save_settings(settings: dict) -> None:
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+# ==========================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ==========================================================
+def get_project_files(projects_dir: str) -> list[str]:
+    if not os.path.exists(projects_dir):
+        return []
+    files = [f for f in os.listdir(projects_dir) if f.endswith(".pas")]
+    files.sort()
+    return files
+
+
+def create_runtime_config(exe_path: str) -> None:
+    config_path = exe_path.replace(".exe", ".runtimeconfig.json")
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(RUNTIME_CONFIG_TEMPLATE)
+    except Exception as e:
+        print(f"[Ошибка создания конфига]: {e}")
+
+
+def get_auto_filename(projects_dir: str) -> str:
+    """Автоматически генерирует имя project_N"""
+    count = 1
+    while os.path.exists(os.path.join(projects_dir, f"project_{count}.pas")):
+        count += 1
+    return f"project_{count}"
+
+
+# ==========================================================
+# ДИАЛОГ ВВОДА ТЕКСТА (создание/переименование/пути)
+# ==========================================================
+class InputDialog(ModalScreen):
+    """Простой диалог с полем ввода"""
+
+    CSS = """
+    InputDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    #dialog_container {
+        width: 60;
+        height: auto;
+        background: $panel;
+        border: thick $primary;
+        padding: 1 2;
+    }
+    #dialog_input {
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+    #dialog_buttons {
+        height: 3;
+    }
+    .dialog_btn {
+        margin-right: 1;
+    }
+    """
+
+    def __init__(self, title: str, placeholder: str = "", default: str = "",
+                 ok_label: str = "✅ ОК", cancel_label: str = "❌ Отмена"):
+        super().__init__()
+        self._title = title
+        self._placeholder = placeholder
+        self._default = default
+        self._ok_label = ok_label
+        self._cancel_label = cancel_label
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog_container"):
+            yield Label(self._title)
+            yield Input(value=self._default, placeholder=self._placeholder, id="dialog_input")
+            with Horizontal(id="dialog_buttons"):
+                yield Button(self._ok_label, variant="success", id="dialog_ok", classes="dialog_btn")
+                yield Button(self._cancel_label, variant="default", id="dialog_cancel", classes="dialog_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "dialog_ok":
+            value = self.query_one("#dialog_input", Input).value.strip()
+            self.dismiss(value if value else None)
+        elif event.button.id == "dialog_cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        self.dismiss(value if value else None)
+
+
+# ==========================================================
+# ГЛАВНЫЙ ФАЙЛОВЫЙ МЕНЕДЖЕР
+# ==========================================================
+class FileMenuScreen(ModalScreen):
+    """Улучшенный файловый менеджер"""
+
+    CSS = """
+    FileMenuScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.5);
+    }
+    #menu_container {
+        width: 48;
+        height: 80%;
+        background: $panel;
+        border: thick $primary;
+        padding: 1;
+    }
+    #search_input {
+        margin-bottom: 1;
+    }
+    #menu_file_list {
+        background: $surface;
+        border: solid $primary;
+        height: 1fr;
+        margin-bottom: 1;
+    }
+    .menu_btn {
+        width: 100%;
+        margin-bottom: 1;
+    }
+    #btn_row1 {
+        height: 3;
+        margin-bottom: 1;
+    }
+    #btn_row2 {
+        height: 3;
+        margin-bottom: 1;
+    }
+    #btn_row3 {
+        height: 3;
+        margin-bottom: 1;
+    }
+    .half_btn {
+        width: 1fr;
+        margin-right: 1;
+    }
+    """
+
+    def __init__(self, projects_dir: str, lang: str):
+        super().__init__()
+        self._projects_dir = projects_dir
+        self._lang = lang
+        self._all_files = get_project_files(projects_dir)
+
+    def compose(self) -> ComposeResult:
+        L = self._lang
+        with Vertical(id="menu_container"):
+            yield Label(tr(L, "menu_title"))
+            yield Input(placeholder=tr(L, "menu_search_ph"), id="search_input")
+            items = [
+                ListItem(Label(f" 📄 {f}"), id=f"file_idx_{i}")
+                for i, f in enumerate(self._all_files)
+            ]
+            yield ListView(*items, id="menu_file_list")
+            with Horizontal(id="btn_row1"):
+                yield Button(tr(L, "menu_new"), variant="primary", id="menu_create_btn", classes="half_btn")
+                yield Button(tr(L, "menu_copy"), variant="default", id="menu_copy_btn", classes="half_btn")
+            with Horizontal(id="btn_row2"):
+                yield Button(tr(L, "menu_rename"), variant="warning", id="menu_rename_btn", classes="half_btn")
+                yield Button(tr(L, "menu_delete"), variant="error", id="menu_delete_btn", classes="half_btn")
+            with Horizontal(id="btn_row3"):
+                yield Button(tr(L, "btn_clear"), variant="error", id="menu_clear_btn", classes="half_btn")
+                yield Button(tr(L, "btn_undo"), variant="warning", id="menu_undo_btn", classes="half_btn")
+            yield Button(tr(L, "menu_close"), variant="default", id="menu_close_btn", classes="menu_btn")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Живой поиск по файлам"""
+        if event.input.id != "search_input":
+            return
+        query = event.value.lower().strip()
+        filtered = [f for f in self._all_files if query in f.lower()] if query else self._all_files
+
+        async def rebuild():
+            file_list = self.query_one("#menu_file_list", ListView)
+            await file_list.clear()
+            for f in filtered:
+                orig_idx = self._all_files.index(f)
+                await file_list.append(ListItem(Label(f" 📄 {f}"), id=f"file_idx_{orig_idx}"))
+
+        self.call_after_refresh(rebuild)
+
+    def _get_highlighted_id(self) -> str | None:
+        file_list = self.query_one("#menu_file_list", ListView)
+        if file_list.highlighted_child and file_list.highlighted_child.id:
+            return file_list.highlighted_child.id
+        return None
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.item and event.item.id:
+            self.dismiss(("select", event.item.id))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "menu_close_btn":
+            self.dismiss(None)
+        elif event.button.id == "menu_create_btn":
+            self.dismiss(("create", True))
+        elif event.button.id == "menu_delete_btn":
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("delete", hid))
+        elif event.button.id == "menu_rename_btn":
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("rename", hid))
+        elif event.button.id == "menu_copy_btn":
+            hid = self._get_highlighted_id()
+            if hid:
+                self.dismiss(("copy", hid))
+        elif event.button.id == "menu_clear_btn":
+            self.dismiss(("clear", True))
+        elif event.button.id == "menu_undo_btn":
+            self.dismiss(("undo", True))
+
+
+# ==========================================================
+# ПРОВАЙДЕР КОМАНД ДЛЯ COMMAND PALETTE (Ctrl+P / "s")
+# ==========================================================
+class SettingsCommands(Provider):
+    """Пункты настроек, доступные через встроенную Command Palette."""
+
+    def _entries(self):
+        app: "PascalTUI" = self.app
+        L = app.lang
+        return [
+            (tr(L, "cmd_template_hello"), tr(L, "cmd_template_hello_help"),
+             partial(app.action_set_template, "hello")),
+            (tr(L, "cmd_template_empty"), tr(L, "cmd_template_empty_help"),
+             partial(app.action_set_template, "empty")),
+            (tr(L, "cmd_runtime_mono"), tr(L, "cmd_runtime_mono_help"),
+             partial(app.action_set_runtime, "mono")),
+            (tr(L, "cmd_runtime_dotnet"), tr(L, "cmd_runtime_dotnet_help"),
+             partial(app.action_set_runtime, "dotnet")),
+            (tr(L, "cmd_lang_ru"), tr(L, "cmd_lang_help"),
+             partial(app.action_set_language, "ru")),
+            (tr(L, "cmd_lang_en"), tr(L, "cmd_lang_help"),
+             partial(app.action_set_language, "en")),
+            (tr(L, "cmd_set_compiler"), tr(L, "cmd_set_compiler_help"),
+             app.action_prompt_compiler_path),
+            (tr(L, "cmd_set_projects"), tr(L, "cmd_set_projects_help"),
+             app.action_prompt_projects_dir),
+            (tr(L, "cmd_show_paths"), tr(L, "cmd_show_paths_help"),
+             app.action_show_paths),
+        ]
+
+    async def discover(self) -> Hits:
+        """Показывает все пункты настроек сразу, до ввода текста в поиск."""
+        for name, help_text, callback in self._entries():
+            yield DiscoveryHit(name, callback, help=help_text)
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        for name, help_text, callback in self._entries():
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(name),
+                    callback,
+                    help=help_text,
+                )
+
+
+# ==========================================================
+# ГЛАВНОЕ ПРИЛОЖЕНИЕ
+# ==========================================================
+class PascalTUI(App):
+    COMMANDS = App.COMMANDS | {SettingsCommands}
+
+    BINDINGS = [
+        ("q", "quit", "Выйти"),
+        ("o", "open_menu", "Открыть меню проектов"),
+        ("s", "command_palette", "Настройки"),
+    ]
+
+    CSS = """
+    #main_layout {
+        layout: vertical;
+    }
+    #workspace {
+        height: 1fr;
+    }
+    #buttons_container {
+        height: 3;
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+    Button {
+        margin-right: 1;
+    }
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.settings = load_settings()
+        self.lang = self.settings.get("language", "ru")
+
+        self.compiler_path = self.settings.get("compiler_path", DEFAULT_COMPILER_PATH)
+        self.projects_dir = self.settings.get("projects_dir", DEFAULT_PROJECTS_DIR)
+
+        self.code_backup = ""
+        self.use_dotnet = self.settings.get("runtime", "mono") == "dotnet"
+
+        if not os.path.exists(self.projects_dir):
+            os.makedirs(self.projects_dir, exist_ok=True)
+
+        self.current_file = os.path.join(self.projects_dir, "main.pas")
+        if not os.listdir(self.projects_dir):
+            with open(self.current_file, "w", encoding="utf-8") as f:
+                f.write(self._start_template_text())
+
+    # ---------------------------------------------------
+    # Настройки / локализация
+    # ---------------------------------------------------
+    def _start_template_text(self) -> str:
+        return TEMPLATE_HELLO_WORLD if self.settings.get("start_template", "hello") == "hello" else TEMPLATE_EMPTY
+
+    def _persist_settings(self) -> None:
+        self.settings["language"] = self.lang
+        self.settings["runtime"] = "dotnet" if self.use_dotnet else "mono"
+        self.settings["compiler_path"] = self.compiler_path
+        self.settings["projects_dir"] = self.projects_dir
+        save_settings(self.settings)
+
+    def action_set_template(self, value: str) -> None:
+        self.settings["start_template"] = value
+        self._persist_settings()
+        key = "cmd_template_hello" if value == "hello" else "cmd_template_empty"
+        self.log_box.write(tr(self.lang, "log_settings_saved", desc=tr(self.lang, key)))
+
+    def action_set_runtime(self, value: str) -> None:
+        self.use_dotnet = value == "dotnet"
+        self._persist_settings()
+        key = "cmd_runtime_dotnet" if self.use_dotnet else "cmd_runtime_mono"
+        self.log_box.write(tr(self.lang, "log_settings_saved", desc=tr(self.lang, key)))
+
+    def action_set_language(self, value: str) -> None:
+        self.lang = value
+        self._persist_settings()
+        self._refresh_static_labels()
+        key = "cmd_lang_ru" if value == "ru" else "cmd_lang_en"
+        self.log_box.write(tr(self.lang, "log_settings_saved", desc=tr(self.lang, key)))
+
+    def _refresh_static_labels(self) -> None:
+        L = self.lang
+        self.query_one("#cur_file_lbl", Label).update(
+            tr(L, "active_file", name=os.path.basename(self.current_file))
+        )
+        files = get_project_files(self.projects_dir)
+        self.query_one("#open_menu_btn", Button).label = tr(L, "btn_projects", n=len(files))
+        self.query_one("#run_btn", Button).label = tr(L, "btn_run")
+        self.query_one("#settings_btn", Button).label = tr(L, "btn_settings")
+
+    def action_show_paths(self) -> None:
+        L = self.lang
+        self.log_box.write(
+            tr(
+                L,
+                "log_paths",
+                script=os.path.abspath(__file__),
+                compiler=self.compiler_path,
+                projects=self.projects_dir,
+                config=SETTINGS_PATH,
+            )
+        )
+
+    def action_prompt_compiler_path(self) -> None:
+        L = self.lang
+        self.push_screen(
+            InputDialog(
+                title=tr(L, "dlg_compiler_title"),
+                placeholder=self.compiler_path,
+                default=self.compiler_path,
+                ok_label=tr(L, "dlg_ok"),
+                cancel_label=tr(L, "dlg_cancel"),
+            ),
+            self._apply_compiler_path,
+        )
+
+    def _apply_compiler_path(self, path: str | None) -> None:
+        if not path:
+            return
+        L = self.lang
+        if not os.path.exists(path):
+            self.log_box.write(tr(L, "log_compiler_not_found_path", path=path))
+            return
+        self.compiler_path = path
+        self._persist_settings()
+        self.log_box.write(tr(L, "log_settings_saved", desc=path))
+
+    def action_prompt_projects_dir(self) -> None:
+        L = self.lang
+        self.push_screen(
+            InputDialog(
+                title=tr(L, "dlg_projects_title"),
+                placeholder=self.projects_dir,
+                default=self.projects_dir,
+                ok_label=tr(L, "dlg_ok"),
+                cancel_label=tr(L, "dlg_cancel"),
+            ),
+            self._apply_projects_dir,
+        )
+
+    def _apply_projects_dir(self, path: str | None) -> None:
+        if not path:
+            return
+        L = self.lang
+        os.makedirs(path, exist_ok=True)
+        self.projects_dir = path
+        self._persist_settings()
+        self._refresh_static_labels()
+        self.log_box.write(tr(L, "log_settings_saved", desc=path))
+
+    # ---------------------------------------------------
+    # Файлы
+    # ---------------------------------------------------
+    def load_start_code(self) -> str:
+        if os.path.exists(self.current_file):
+            with open(self.current_file, "r", encoding="utf-8") as f:
+                return f.read()
+        return self._start_template_text()
+
+    def save_current_file(self) -> None:
+        if getattr(self, "current_file", None):
+            try:
+                with open(self.current_file, "w", encoding="utf-8") as f:
+                    f.write(self.editor.text)
+            except Exception:
+                pass
+
+    def compose(self) -> ComposeResult:
+        L = self.lang
+        yield Header(show_clock=True)
+        with Vertical(id="main_layout"):
+            with Vertical(id="workspace"):
+                yield Label(
+                    tr(L, "active_file", name=os.path.basename(self.current_file)),
+                    id="cur_file_lbl",
+                )
+                start_code = self.load_start_code()
+                self.editor = TextArea(start_code, language="pascal")
+                yield self.editor
+            with Horizontal(id="buttons_container"):
+                files = get_project_files(self.projects_dir)
+                yield Button(tr(L, "btn_projects", n=len(files)), variant="primary", id="open_menu_btn")
+                yield Button(tr(L, "btn_run"), variant="success", id="run_btn")
+                yield Button(tr(L, "btn_settings"), variant="default", id="settings_btn")
+            self.log_box = RichLog()
+            yield self.log_box
+        yield Footer()
+
+    def action_open_menu(self) -> None:
+        self.save_current_file()
+        self.push_screen(
+            FileMenuScreen(self.projects_dir, self.lang),
+            self.handle_menu_result,
+        )
+
+    def handle_menu_result(self, result) -> None:
+        if not result:
+            return
+        L = self.lang
+        action_type, data = result
+        files = get_project_files(self.projects_dir)
+
+        if action_type == "select":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                filename = files[idx]
+                self.current_file = os.path.join(self.projects_dir, filename)
+                with open(self.current_file, "r", encoding="utf-8") as f:
+                    self.editor.text = f.read()
+                self.query_one("#cur_file_lbl").update(tr(L, "active_file", name=filename))
+                self.log_box.write(tr(L, "log_opened", name=filename))
+
+        elif action_type == "create":
+            auto_name = get_auto_filename(self.projects_dir)
+            self.push_screen(
+                InputDialog(
+                    title=tr(L, "dlg_create_title"),
+                    placeholder=auto_name,
+                    default="",
+                    ok_label=tr(L, "dlg_ok"),
+                    cancel_label=tr(L, "dlg_cancel"),
+                ),
+                lambda name: self._do_create(name, auto_name),
+            )
+
+        elif action_type == "delete":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                filename = files[idx]
+                target_path = os.path.join(self.projects_dir, filename)
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+                    for ext in [".exe", ".runtimeconfig.json"]:
+                        p = os.path.splitext(target_path)[0] + ext
+                        if os.path.exists(p):
+                            os.remove(p)
+                    self.log_box.write(tr(L, "log_deleted", name=filename))
+                remaining = get_project_files(self.projects_dir)
+                if remaining:
+                    self.current_file = os.path.join(self.projects_dir, remaining[0])
+                else:
+                    self.current_file = os.path.join(self.projects_dir, "main.pas")
+                    with open(self.current_file, "w", encoding="utf-8") as f:
+                        f.write(self._start_template_text())
+                with open(self.current_file, "r", encoding="utf-8") as f:
+                    self.editor.text = f.read()
+                self.query_one("#cur_file_lbl").update(
+                    tr(L, "active_file", name=os.path.basename(self.current_file))
+                )
+                self.action_open_menu()
+
+        elif action_type == "rename":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                old_name = files[idx]
+                old_base = os.path.splitext(old_name)[0]
+                self.push_screen(
+                    InputDialog(
+                        title=tr(L, "dlg_rename_title", name=old_name),
+                        placeholder="new_name",
+                        default=old_base,
+                        ok_label=tr(L, "dlg_ok"),
+                        cancel_label=tr(L, "dlg_cancel"),
+                    ),
+                    lambda new_name, on=old_name: self._do_rename(on, new_name),
+                )
+
+        elif action_type == "copy":
+            idx = int(data.split("_")[-1])
+            if idx < len(files):
+                src_name = files[idx]
+                src_base = os.path.splitext(src_name)[0]
+                auto_copy = f"{src_base}_copy"
+                self.push_screen(
+                    InputDialog(
+                        title=tr(L, "dlg_copy_title", name=src_name),
+                        placeholder=auto_copy,
+                        default=auto_copy,
+                        ok_label=tr(L, "dlg_ok"),
+                        cancel_label=tr(L, "dlg_cancel"),
+                    ),
+                    lambda new_name, sn=src_name: self._do_copy(sn, new_name),
+                )
+
+        elif action_type == "clear":
+            self.code_backup = self.editor.text
+            self.editor.text = "begin\n \nend."
+
+        elif action_type == "undo":
+            if self.code_backup:
+                self.editor.text = self.code_backup
+
+    def _do_create(self, name: str | None, auto_name: str) -> None:
+        L = self.lang
+        filename = (name if name else auto_name) + ".pas"
+        if filename.endswith(".pas.pas"):
+            filename = filename[:-4]
+        self.current_file = os.path.join(self.projects_dir, filename)
+        chosen_template = self._start_template_text()
+        with open(self.current_file, "w", encoding="utf-8") as f:
+            f.write(chosen_template)
+        self.editor.text = chosen_template
+        self.query_one("#cur_file_lbl").update(tr(L, "active_file", name=filename))
+        self.log_box.write(tr(L, "log_created", name=filename))
+        self.action_open_menu()
+
+    def _do_rename(self, old_name: str, new_name: str | None) -> None:
+        L = self.lang
+        if not new_name:
+            self.action_open_menu()
+            return
+        if not new_name.endswith(".pas"):
+            new_name += ".pas"
+        old_path = os.path.join(self.projects_dir, old_name)
+        new_path = os.path.join(self.projects_dir, new_name)
+        if os.path.exists(new_path):
+            self.log_box.write(tr(L, "log_exists", name=new_name))
+            self.action_open_menu()
+            return
+        os.rename(old_path, new_path)
+        for ext in [".exe", ".runtimeconfig.json"]:
+            old_p = os.path.splitext(old_path)[0] + ext
+            new_p = os.path.splitext(new_path)[0] + ext
+            if os.path.exists(old_p):
+                os.rename(old_p, new_p)
+        if self.current_file == old_path:
+            self.current_file = new_path
+            self.query_one("#cur_file_lbl").update(tr(L, "active_file", name=new_name))
+        self.log_box.write(tr(L, "log_renamed", old=old_name, new=new_name))
+        self.action_open_menu()
+
+    def _do_copy(self, src_name: str, new_name: str | None) -> None:
+        L = self.lang
+        if not new_name:
+            self.action_open_menu()
+            return
+        if not new_name.endswith(".pas"):
+            new_name += ".pas"
+        src_path = os.path.join(self.projects_dir, src_name)
+        dst_path = os.path.join(self.projects_dir, new_name)
+        if os.path.exists(dst_path):
+            self.log_box.write(tr(L, "log_exists", name=new_name))
+            self.action_open_menu()
+            return
+        shutil.copy2(src_path, dst_path)
+        self.log_box.write(tr(L, "log_copied", old=src_name, new=new_name))
+        self.action_open_menu()
+
+    # ---------------------------------------------------
+    # Кнопки / запуск
+    # ---------------------------------------------------
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "open_menu_btn":
+            self.action_open_menu()
+        elif event.button.id == "run_btn":
+            self._run_current_file()
+        elif event.button.id == "settings_btn":
+            self.action_command_palette()
+
+    def _run_current_file(self) -> None:
+        L = self.lang
+        self.log_box.clear()
+        self.save_current_file()
+        base_name = os.path.splitext(self.current_file)[0]
+        exe_path = base_name + ".exe"
+
+        if os.path.exists(exe_path):
+            try:
+                os.remove(exe_path)
+            except Exception:
+                pass
+
+        self.log_box.write(tr(L, "log_compiling", name=os.path.basename(self.current_file)))
+
+        if not os.path.exists(self.compiler_path):
+            searched = "\n".join(
+                os.path.join(d, "pabcnetc.exe") for d in _candidate_share_dirs()
+            )
+            self.log_box.write(tr(L, "log_no_compiler", paths=searched))
+            return
+
+        res = subprocess.run(
+            ["mono", self.compiler_path, self.current_file],
+            capture_output=True,
+            text=True,
+        )
+
+        if res.returncode == 0 and os.path.exists(exe_path):
+            self.log_box.write(tr(L, "log_compiled_ok"))
+
+            if self.use_dotnet:
+                create_runtime_config(exe_path)
+                self.log_box.write(tr(L, "log_runtimeconfig"))
+
+            with self.suspend():
+                os.system("clear")
+                print(tr(L, "run_header"))
+                print(tr(L, "run_running", name=os.path.basename(exe_path)))
+                try:
+                    if self.use_dotnet:
+                        subprocess.run(["dotnet", exe_path])
+                    else:
+                        subprocess.run(["mono", exe_path])
+                except Exception as e:
+                    print(tr(L, "run_exc", e=e))
+                print(tr(L, "run_footer"))
+                input(tr(L, "run_enter"))
+        else:
+            self.log_box.write(tr(L, "log_compile_err"))
+            if res.stdout:
+                self.log_box.write(res.stdout)
+            if res.stderr:
+                self.log_box.write(res.stderr)
+
+
+if __name__ == "__main__":
+    PascalTUI().run()
