@@ -7,7 +7,7 @@
 abc-pascal-tui — это IDE для Pascal на основе компилятора PascalABC.NET, использующая TUI (текстовый интерфейс) на Python.
 
 ## ТРЕБОВАНИЯ
-Перед установкой IDE убедитесь, что у вас установлены Python, Mono, Git и библиотека Textual. DotNet пока не обязателен (он нужен для запуска бинарников, которые некорректно работают под Mono).
+Перед установкой IDE убедитесь, что у вас установлены Python, Mono, Git и библиотека Textual. DotNet не обязателен (он нужен для запуска бинарников, которые некорректно работают под Mono).
 
 <p align="center">
   <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
