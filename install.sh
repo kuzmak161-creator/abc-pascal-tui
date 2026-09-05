@@ -76,8 +76,8 @@ if [ -n "$PREFIX" ]; then
     SHARE_DIR="$PREFIX/share/$PROJECT_NAME"
 else
     # Обычный Linux
-    BIN_DIR="/usr/local/bin"
-    SHARE_DIR="/usr/local/share/$PROJECT_NAME"
+    BIN_DIR="/bin"
+    SHARE_DIR="/usr/share/$PROJECT_NAME"
 fi
 
 echo ""
@@ -126,7 +126,7 @@ cat > "$BIN_DIR/$BIN_NAME" << 'EOF'
 if [ -n "$PREFIX" ]; then
     SHARE_DIR="$PREFIX/share/abc-pascal-tui"
 else
-    SHARE_DIR="/usr/local/share/abc-pascal-tui"
+    SHARE_DIR="/usr/share/abc-pascal-tui"
 fi
 
 # Запускаем IDE (используем python3)
