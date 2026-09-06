@@ -76,7 +76,7 @@ Settings will be saved in:
 
 Instructions for Debian
 
-(tested only on Arm versions)
+(tested on Arm versions and mx linux x86_64)
 
 ```bash
 sudo apt install mono-complete 
