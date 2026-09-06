@@ -64,8 +64,8 @@ bash install.sh
 
 Скрипт попросить вибрати мову (English / Русский / Українська), після чого:
 
-· скопіює всі файли проекту (включно зі скриптом tui) до /usr/local/share/abc-pascal-tui (або $PREFIX/share/abc-pascal-tui у Termux, якщо задана змінна $PREFIX);
-· створить команду pascal-tui у /usr/local/bin (або $PREFIX/bin), яка запускає встановлений скрипт tui;
+· скопіює всі файли проекту (включно зі скриптом tui) до /usrshare/abc-pascal-tui (або $PREFIX/share/abc-pascal-tui у Termux, якщо задана змінна $PREFIX);
+· створить команду pascal-tui у /bin (або $PREFIX/bin), яка запускає встановлений скрипт tui;
 · видалить себе після успішного встановлення.
 
 Після встановлення ви зможете запускати IDE з будь-якого місця командою:
@@ -84,7 +84,7 @@ pascal-tui
 
 Інструкція для Debian
 
-(Перевірено лише на ARM-версії.)
+(Перевірено на ARM-версії та mx linux x86_64.)
 
 ```bash
 sudo apt install mono-complete 
