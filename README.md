@@ -13,7 +13,7 @@ Before installing the IDE, ensure you have Python, Mono, Git, and the Textual li
 </p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Interface in a graphical environment" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Interface in a graphical environment" width="400">
 </p>
 
 # Instructions for Termux

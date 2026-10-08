@@ -1,0 +1,18 @@
+{
+  "hello": {
+    "title": {"ru": "Hello World", "en": "Hello World"},
+    "code": "begin\n writeln('Hello World');\nend."
+  },
+  "empty": {
+    "title": {"ru": "Пустой", "en": "Empty"},
+    "code": "begin\n \nend."
+  },
+  "input": {
+    "title": {"ru": "Ввод и вывод", "en": "Input / output"},
+    "code": "var\n  a, b: integer;\nbegin\n  readln(a, b);\n  writeln(a + b);\nend."
+  },
+  "loop": {
+    "title": {"ru": "Цикл for", "en": "For loop"},
+    "code": "begin\n  for var i := 1 to 10 do\n    writeln(i);\nend."
+  }
+}

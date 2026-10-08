@@ -14,8 +14,8 @@ abc-pascal-tui — это IDE для Pascal на основе компилято
 <p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
-<p>
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Interface in a graphical environment" width="400">
+</p>
 
 # Инструкция для Termux
 
