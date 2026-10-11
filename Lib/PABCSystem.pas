@@ -10,10 +10,7 @@ unit PABCSystem;
 // Default Application type
 {$apptype console}
 
-{$reference '%GAC%\System.dll'}
-{$reference '%GAC%\mscorlib.dll'}
-{$reference '%GAC%\System.Core.dll'}
-{$reference '%GAC%\System.Numerics.dll'}
+{$platform Core}
 
 interface
 
@@ -570,7 +567,7 @@ type
     static function operator>(first, second: NewSet<T>) := first.hs.IsProperSupersetOf(second.hs);
     static function operator>=(first, second: NewSet<T>) := first.hs.IsSupersetOf(second.hs);
 
-    static function operator implicit(ns: NewSet<T>): HashSet<T> := ns.ToHashSet;
+    static function operator implicit(ns: NewSet<T>): HashSet<T>;
     static function operator implicit(ns: HashSet<T>): NewSet<T>;
     begin
       Result.hs.UnionWith(ns);
@@ -632,11 +629,11 @@ type
 
     static function operator implicit<T>(Self: EmptyCollection): array of T; 
     begin
-      Result := System.Array.Empty&<T>;
+      Result := new T[0];
     end;
     static function operator implicit<T>(Self: EmptyCollection): sequence of T; 
     begin
-      Result := System.Array.Empty&<T>;
+      Result := new T[0];
     end;
     static function operator implicit<T>(Self: EmptyCollection): HashSet<T> := new HashSet<T>;
     static function operator implicit<T>(Self: EmptyCollection): SortedSet<T> := new SortedSet<T>;
@@ -2470,6 +2467,15 @@ function Length(a: System.Array; dim: integer): integer;
 ///- function Copy(a: array of T): array of T;
 /// Создаёт копию массива
 function Copy(a: System.Array): System.Array;
+/// Создаёт поверхностную копию списка
+function Copy<T>(lst: List<T>): List<T>;
+/// Создаёт поверхностную копию HashSet<T>
+function Copy<T>(hs: HashSet<T>): HashSet<T>;
+/// Создаёт поверхностную копию SortedSet<T>
+function Copy<T>(ss: SortedSet<T>): SortedSet<T>;
+/// Создаёт поверхностную копию SortedSet<T>
+function Copy<T,T1>(d: Dictionary<T,T1>): Dictionary<T,T1>;
+
 
 /// Сортирует массив по возрастанию
 procedure Sort<T>(a: array of T);
@@ -3262,8 +3268,6 @@ procedure __FinalizeModule__;
 function DQNToNullable<T>(v: T): Nullable<T>; where T: record;
 
 implementation
-
-function NewSet<T>.ToString: string := $'{ObjectToString(hs)}';
 
 var
   rnd: System.Random; // глобальный генератор случайных чисел
@@ -5047,7 +5051,7 @@ begin
     exit;
   end;
   
-  if t.GetInterfaces.Append(t).Contains(typeof(System.Collections.IEnumerable)) then
+  {if t.GetInterfaces.Append(t).Contains(typeof(System.Collections.IEnumerable)) then
   begin
     var typed := t.GetInterfaces.Append(t).FirstOrDefault(intr->intr.IsGenericType and (intr.GetGenericTypeDefinition=typeof(IEnumerable<>)));
     if (t=typed) or (typed<>nil) and (
@@ -5062,12 +5066,45 @@ begin
       TypeToTypeNameHelper(typed.GetGenericArguments.Single, res);
       exit;
     end;
+  end;}
+  
+  if t.GetInterfaces.Contains(typeof(System.Collections.IEnumerable)) then
+  begin
+    // Проверяем сам тип t на IEnumerable<>
+    if t.IsGenericType and (t.GetGenericTypeDefinition = typeof(IEnumerable<>)) then
+    begin
+      // t сам является IEnumerable<>, проверяем условия для yield
+      if t.Name.StartsWith('clyield#') or t.IsNestedPrivate then
+      begin
+        res.Write('sequence of ');
+        TypeToTypeNameHelper(t.GetGenericArguments[0], res);
+        exit;
+      end;
+    end;
+    
+    // Проверяем интерфейсы t на IEnumerable<>
+    var interfaces := t.GetInterfaces;
+    for var i := 0 to interfaces.Length - 1 do
+    begin
+      var intr := interfaces[i];
+      if intr.IsGenericType and (intr.GetGenericTypeDefinition = typeof(IEnumerable<>)) then
+      begin
+        // Проверяем условия для yield
+        if t.Name.StartsWith('clyield#') or t.IsNestedPrivate then
+        begin
+          res.Write('sequence of ');
+          TypeToTypeNameHelper(intr.GetGenericArguments[0], res);
+          exit;
+        end;
+      end;
+    end;
   end;
   
   var gen_args := t.GetGenericArguments;
   
   //TODO t.IsClass, чтобы ValueTuple пока что не ловило
-  if t.GetInterfaces.Contains(typeof(System.Runtime.CompilerServices.ITuple)) and t.IsClass then
+  //if t.GetInterfaces.Contains(typeof(System.Runtime.CompilerServices.ITuple)) and t.IsClass then
+  if t.IsGenericType and t.IsClass and t.FullName.StartsWith('System.Tuple`') then  
   begin
     res.Write('(');
     var any_gen_arg := false;
@@ -9710,7 +9747,7 @@ begin
     exit(n);
   
   var x := n;
-  var y := (x + 1) div 2;  
+  var y := x - x div 2;  
   
   while y < x do
   begin
@@ -10203,6 +10240,34 @@ begin
   if a = nil then
     exit(nil);
   Result := &Array(a.Clone());
+end;
+
+function Copy<T>(lst: List<T>): List<T>;
+begin
+  if lst = nil then
+    exit(nil);
+  Result := new List<T>(lst);
+end;
+
+function Copy<T>(hs: HashSet<T>): HashSet<T>;
+begin
+  if hs = nil then
+    exit(nil);
+  Result := new HashSet<T>(hs, hs.Comparer);
+end;
+
+function Copy<T>(ss: SortedSet<T>): SortedSet<T>;
+begin
+  if ss = nil then
+    exit(nil);
+  Result := new SortedSet<T>(ss, ss.Comparer);
+end;
+
+function Copy<T,T1>(d: Dictionary<T,T1>): Dictionary<T,T1>;
+begin
+  if d = nil then
+    exit(nil);
+  Result := new Dictionary<T,T1>(d, d.Comparer);
 end;
 
 procedure Sort<T>(a: array of T);
@@ -13592,15 +13657,30 @@ end;
 /// Вывод двумерного вещественного массива по формату :w:f
 function Print(Self: array [,] of real; w: integer := 7; f: integer := 2): array [,] of real; extensionmethod;
 begin
-  for var i := 0 to Self.RowCount - 1 do
+  if PrintMatrixWithFormat then
   begin
+    var widths := new integer[Self.ColCount];
     for var j := 0 to Self.ColCount - 1 do
     begin
-      if PrintMatrixWithFormat then
-        Write(FormatValue(Self[i, j], w, f))
-      else Print(Self[i, j]);
-    end;  
-    Writeln;  
+      widths[j] := w;
+      for var i := 0 to Self.RowCount - 1 do
+        widths[j] := Max(widths[j], FormatValue(Self[i, j], 0, f).Length + 1);
+    end;
+    for var i := 0 to Self.RowCount - 1 do
+    begin
+      for var j := 0 to Self.ColCount - 1 do
+        Write(FormatValue(Self[i, j], 0, f).PadLeft(widths[j]));
+      Writeln;
+    end;
+  end
+  else
+  begin
+    for var i := 0 to Self.RowCount - 1 do
+    begin
+      for var j := 0 to Self.ColCount - 1 do
+        Print(Self[i, j]);
+      Writeln;
+    end;
   end;
   Result := Self;  
 end;
@@ -17041,6 +17121,11 @@ function operator implicit<T>(a: array of T): HashSet<T>; extensionmethod
 
 function operator implicit(a: array of integer): HashSet<integer>; extensionmethod
   := new HashSet<integer>(a);
+  
+function NewSet<T>.ToString: string := $'{ObjectToString(hs)}';
+
+static function NewSet<T>.operator implicit(ns: NewSet<T>): HashSet<T> := ns.ToHashSet;
+
 
 // -----------------------------------------------------------------------------
 //                Внутренние вспомогательные функции 

@@ -1,4 +1,4 @@
-﻿/// Учебный модуль, реализующий базовые алгоритмы информатики (07.02.2025)
+﻿/// Учебный модуль, реализующий базовые алгоритмы информатики (04.08.2026)
 unit School;
 
 interface
@@ -197,8 +197,26 @@ function НОК(a, b: int64): int64;
 /// Возвращает НОД и НОК пары чисел
 function НОДНОК(a, b: int64): (int64, int64);
 
-/// возвращает True, если число n простое и False в противном случае
+/// Возвращает НОД массива или перечИсленых через запятую значений типа int64
+function GCD(params a: array of int64): int64;
+
+/// Возвращает НОД массива или перечисленых через запятую значений типа BigInteger
+function GCD(params a: array of BigInteger): BigInteger;
+
+/// Возвращает НОK массива или перечисленых через запятую значений типа int64
+function LCM(params a: array of int64): int64;
+
+/// Возвращает НОД массива или перечмсленых через запятую значений типа BigInteger
+function LCM(params a: array of BigInteger): BigInteger;
+
+/// возвращает Sqrt(n), если неотрицательное n - полный квадрат. Иначе возвращает -1.
+function PerfectSquare(n: int64): int64;
+
+/// возвращает True, если натуральное n простое и False в противном случае
 function IsPrime(n: integer): boolean;
+
+/// возвращает True, если натуральное n простое и False в противном случае
+function IsPrime(n: int64): boolean;
 
 /// Простые числа на интервале [2;n] 
 function Primes(n: integer): List<integer>;
@@ -212,11 +230,20 @@ function FirstPrimes(k: integer): List<integer>;
 /// Разложение числа на простые множители (список всех его простых делителей)
 function Factorize(n: integer): List<integer>;
 
+/// Разложение числа на простые множители (список всех его простых делителей)
+function Factorize(n: int64): List<int64>;
+
 /// Список уникальных простых делителей числа n
 /// Для n < 2 возвращается пустой список.
 /// Для простого n возвращается список из одного числа n.
 /// Для составных чисел при n >= 4 возвращается список уникальных простых делителей.
 function PrimeDivisors(n: integer): List<integer>;
+
+/// Список уникальных простых делителей числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел при n >= 4 возвращается список уникальных простых делителей.
+function PrimeDivisors(n: int64): List<int64>;
 
 /// Количество уникальных простых делителей числа n
 /// Для n < 2 возвращается 0.
@@ -224,17 +251,35 @@ function PrimeDivisors(n: integer): List<integer>;
 /// Для составных чисел при n >= 4 возвращается количество уникальных простых делителей.
 function PrimeDivisorsCount(n: integer): integer;
 
-/// Список простых факторов (простых делителей) числа n
+/// Количество уникальных простых делителей числа n
+/// Для n < 2 возвращается 0.
+/// Для простых чисел возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество уникальных простых делителей.
+function PrimeDivisorsCount(n: int64): integer;
+
+/// Список простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается пустой список.
 /// Для простого n возвращается список из одного числа n.
 /// Для составных чисел n >= 4 возвращается список всех простых факторов.
 function PrimeFactors(n: integer): List<integer>;
 
-/// Количество простых факторов (простых делителей) числа n
+/// Список простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел n >= 4 возвращается список всех простых факторов.
+function PrimeFactors(n: int64): List<int64>;
+
+/// Количество простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается 0.
 /// Для простых чисел возвращается 1.
 /// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
 function PrimeFactorsCount(n: integer): integer;
+
+/// Количество простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается 0.
+/// Для простых чисел возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
+function PrimeFactorsCount(n: int64): integer;
 
 /// Возвращает целочисленный список расширенного представления
 /// десятичного числа n по основанию base.
@@ -258,14 +303,20 @@ function DigitsToInt64(ext: List<integer>; base: integer := 10): int64;
 /// Функция выполняет действие, обратное функции Digits,
 function DigitsToBigInteger(ext: List<integer>; base: integer := 10): BigInteger;
 
-/// Возвращает список делителей натурального числа n
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
 function Divisors(n: integer): List<integer>;
+
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
+function Divisors(n: int64): List<int64>;
 
 ///--
 function Divizors(n: integer): List<integer>;
 
-/// Количество всех делителей числа n, включая 1 и само число
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
 function DivisorsCount(n: integer): integer;
+
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
+function DivisorsCount(n: int64): integer;
 
 /// Возвращает Sin угла, заданного в градусах
 function SinDegrees(x: real): real;
@@ -275,18 +326,6 @@ function CosDegrees(x: real): real;
 
 /// Возвращает Tg угла, заданного в градусах
 function TanDegrees(x: real): real;
-
-/// Возвращает вещественный массив, заполненный случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function ArrRandomReal(n: integer; a, b: real; t: integer): array of real;
-
-/// Возвращает вещественную последовательность, заполненную случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function SeqRandomReal(n: integer; a, b: real; t: integer): sequence of real;
-
-/// Возвращает вещественную матрицу, заполненную случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function MatrRandomReal(m: integer; n: integer; a, b: real; t: integer): array [,] of real;
 
 /// Возвращает таблицу истинности для двух переменных
 function TrueTable(f: function(a, b: boolean): boolean):
@@ -343,6 +382,12 @@ type
   end;
   
   School_InvalidBase = class(Exception)
+  end;
+  
+  School_FactorizationError = class(Exception)
+  end;
+  
+  School_FuctionArgumentsError = class(Exception)
   end;
 
 var
@@ -677,22 +722,60 @@ begin
   Result := (a, Abs(a1 div a * b1))
 end;
 
-/// Возвращает НОД кортежа двух чисел типа int64
-function НОД(Self: (int64, int64)): integer; extensionmethod;
+/// Возвращает НОД массива или перечисленых через запятую значений типа int64
+function GCD(params a: array of int64): int64;
 begin
-  var (a, b) := Self;
-  while b <> 0 do
-    (a, b) := (b, a mod b);
-  Result := Abs(a)
+  var n := a.Length;
+  if n = 0 then raise new School_FuctionArgumentsError('GCD: Аргумент не может быть пустым')
+  else if n = 1 then Result := a[0]
+  else
+  begin
+    Result := GCD(a[0], a[1]);
+    for var i := 1 to n - 1 do
+      Result := GCD(Result, a[i])
+  end
 end;
 
-/// Возвращает НОД кортежа двух чисел типа integer
-function НОД(Self: (integer, integer)): integer; extensionmethod;
+/// Возвращает НОД массива или перечисленых через запятую значений типа BigInteger
+function GCD(params a: array of BigInteger): BigInteger;
 begin
-  var (a, b) := Self;
-  while b <> 0 do
-    (a, b) := (b, a mod b);
-  Result := Abs(a)
+  var n := a.Length;
+  if n = 0 then raise new School_FuctionArgumentsError('GCD: Аргумент не может быть пустым')
+  else if n = 1 then Result := a[0]
+  else
+  begin
+    Result := GCD(a[0], a[1]);
+    for var i := 1 to n - 1 do
+      Result := GCD(Result, a[i])
+  end;
+end;
+
+/// Возвращает НОK массива или перечисленых через запятую значений типа int64
+function LCM(params a: array of int64): int64;
+begin
+  var n := a.Length;
+  if n = 0 then raise new School_FuctionArgumentsError('LCM: Аргумент не может быть пустым')
+  else if n = 1 then Result := a[0]
+  else
+  begin
+    Result := a[0] * a[1] div GCD(a[0], a[1]);
+    for var i := 1 to n - 1 do
+      Result := Result * a[i] div GCD(Result, a[i])
+  end
+end;
+
+/// Возвращает НОД массива или перечмсленых через запятую значений типа BigInteger
+function LCM(params a: array of BigInteger): BigInteger;
+begin
+  var n := a.Length;
+  if n = 0 then raise new School_FuctionArgumentsError('LCM: Аргумент не может быть пустым')
+  else if n = 1 then Result := a[0]
+  else
+  begin
+    Result := a[0] * a[1] div GCD(a[0], a[1]);
+    for var i := 1 to n - 1 do
+      Result := Result * a[i] div GCD(Result, a[i])
+  end
 end;
 
 {$endregion}
@@ -718,7 +801,115 @@ begin
     end
 end;
 
-/// возвращает True, если число n простое и False в противном случае
+// Внутренняя функция
+// SQUFOF (SQUare FOrm Factorization (1975, Д.Шенкс) - метод факторизации,
+// основанный на квадратичных бинарных формах. Является наиболее быстрым
+// для чисел от 10^10 до 10^18. Использует формулы метода факторизации
+// непрерывныз дробей CFRAC (the Common FRACtion facrorization method
+// (1975, Мориссон, Брильхарт).
+// Портирован из https://rosettacode.org/wiki/Square_form_factorization
+// Возвращает делитель натурального n, не обязательно простой
+function SQUFOF(n: int64): int64;
+begin
+  if IsPrime(n) then exit(n);
+  var am := [1, 3, 5, 7, 11, 15, 21, 33, 35, 55, 77, 105, 165, 231, 385, 1155];
+  if n mod 2 = 0 then exit(2);
+  var d := PerfectSquare(n);
+  if d <> -1 then exit(d);    // n является полным квадратом
+  foreach var m in am do
+  begin
+    if (m > 1) and (n mod m = 0) then exit(m);
+    if n > int64.MaxValue div m then break;
+    var mn := m * n;
+    var r := iSqrt(mn);
+    if Sqr(r) > mn then r -= 1;
+    var rn := r;
+    var b := r;
+    var a: int64 := 1;
+    var h := ((rn + b) div a) * a - b;
+    var c := (mn - Sqr(h)) div a;
+    for var i := int64(2) to 4 * iSqrt(2 * r) do
+    begin
+      (a, c) := (c, a);
+      var q := (rn + b) div a;
+      var t := b;
+      b := q * a - b;
+      c += q * (t - b);
+      if i mod 2 = 0 then
+      begin  
+        r := iSqrt(c);
+        if Sqr(r) = c then
+        begin
+          q := (rn - b) div r;
+          var v := q * r + b;
+          var w := (mn - Sqr(v)) div r;
+          var u := r;
+          while True do
+          begin  
+            (w, u) := (u, w);
+            r := v;
+            q := (rn + v) div u;
+            v := q * u - v;
+            if v = r then break;
+            w += q * (r - v);
+          end;
+          h := GCD(n, u);
+          if h <> 1 then exit(h)
+        end
+      end
+    end
+  end;
+  exit(-1)
+end;
+
+// Внутренняя функция
+// Вызывается после того, как SQUFOF не нашел делитель (вернул -1)
+// Ищет и возвращает один фактор
+// Возвращает -1, если фактор не найден
+// Предложена ChatGPТ, портирована с Python и дорабаотана.
+function PollardRhoOneFactor(n: int64): int64;
+  function f(x: int64; c: integer) := (Sqr(x) + c) mod n;
+begin
+  var cV := [1, 3, 5, 7, 11, 13, 17, 19, 23, 29];
+  var MaxSteps := 500_000;
+  foreach var c in cV do
+  begin
+    var (x, y, d) := (int64(2), int64(2), int64(1));
+    loop MaxSteps do
+    begin
+      x := f(x, c);
+      y := f(f(y, c), c);
+      d := GCD(Abs(x - y), n);
+      if d = 1 then continue;
+      if d = n then break;
+      exit(d)                   // первый нетривиальный делитель
+    end
+  end;  
+  exit(-1)                      // Не удалось за MaxSteps найти делитель
+end;
+
+/// возвращает Sqrt(n), если неотрицательное n - полный квадрат. Иначе возвращает -1.
+function PerfectSquare(n: int64): int64;
+// На базе MathNet.Numerics. Портирована С.С. Михалковичем.
+begin
+  if n < 0 then
+    exit(int64(-1));
+  var lastHexDigit := integer(n and $F);
+  if lastHexDigit > 9 then
+    exit(int64(-1));
+  if (lastHexDigit = 0) or (lastHexDigit = 1) or 
+     (lastHexDigit = 4) or (lastHexDigit = 9) then
+  begin
+    var t := Convert.ToInt64(System.Math.Floor(Sqrt(n) + 0.5));
+    exit(t * t = n ? t : int64(-1));
+  end;
+  exit(int64(-1));
+end;
+
+/// возвращает Sqrt(n), если неотрицательное n - полный квадрат. Иначе возвращает -1.
+function PerfectSquare(Self: int64): int64; extensionmethod := PerfectSquare(Self);
+
+/// возвращает True, если натуральное n простое и False в противном случае
 function IsPrime(n: integer): boolean;
 begin
   if n < 2 then
@@ -737,7 +928,7 @@ begin
   end
 end;
 
-/// возвращает True, если число простое и False в противном случае
+/// возвращает True, если натуральное n простое и False в противном случае
 function IsPrime(Self: integer): boolean; extensionmethod := IsPrime(Self);
 
 /// Простые числа на интервале [2;n]
@@ -785,8 +976,8 @@ begin
     if m >= n then exit
   end;  
   var ls64: int64 := ls;
-  var ln := Ceil(m / ls); // номер левого сегмента
-  var rn := Ceil(n / ls); // номер правого сегмента
+  var ln: integer := Ceil(m / ls); // номер левого сегмента
+  var rn: integer := Ceil(n / ls); // номер правого сегмента
   for var sn := ln to rn do // решето на каждом сегменте
   begin
     var a := Max((sn - 1) * ls64 + 1, 2); // int64
@@ -864,6 +1055,19 @@ end;
 /// Для составных чисел при n >= 4 возвращается список уникальных простых делителей.
 function PrimeDivisors(Self: integer): List<integer>; extensionmethod := PrimeDivisors(Self);
 
+/// Список уникальных простых делителей числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел при n >= 4 возвращается список уникальных простых делителей.
+function PrimeDivisors(n: int64) := PrimeFactors(n).Distinct.Order.ToList;
+
+/// Список уникальных простых делителей числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел при n >= 4 возвращается список уникальных простых делителей.
+function PrimeDivisors(Self: int64): List<int64>; extensionmethod := 
+    PrimeFactors(Self).Distinct.Order.ToList;
+
 /// Количество уникальных простых делителей числа n
 /// Для n < 2 возвращается 0.
 /// Для простых чисел возвращается 1.
@@ -896,7 +1100,20 @@ end;
 /// Для составных чисел при n >= 4 возвращается количество уникальных простых делителей.
 function PrimeDivisorsCount(Self: integer): integer; extensionmethod := PrimeDivisorsCount(Self);
 
-/// Список простых факторов (простых делителей) числа n
+/// Количество уникальных простых делителей числа n
+/// Для n < 2 возвращается 0.
+/// Для простых чисел возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество уникальных простых делителей.
+function PrimeDivisorsCount(n: int64) := PrimeFactors(n).Distinct.Count;
+
+/// Количество уникальных простых делителей числа n
+/// Для n < 2 возвращается 0.
+/// Для простых чисел возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество уникальных простых делителей.
+function PrimeDivisorsCount(Self: int64): integer; extensionmethod :=
+    PrimeFactors(Self).Distinct.Count;
+
+/// Список простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается пустой список.
 /// Для простого n возвращается список из одного числа n.
 /// Для составных чисел n >= 4 возвращается список всех простых факторов.
@@ -919,15 +1136,58 @@ begin
   else if n > 1 then Result.Add(n)
 end;
 
-/// Список простых факторов (простых делителей) числа n
+/// Список простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается пустой список.
 /// Для простого n возвращается список из одного числа n.
 /// Для составных чисел n >= 4 возвращается список всех простых факторов.
 function PrimeFactors(Self: integer): List<integer>; extensionmethod := PrimeFactors(Self);
 
-/// Количество простых факторов (простых делителей) числа n
+/// Список простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел n >= 4 возвращается список всех простых факторов.
+function PrimeFactors(n: int64): List<int64>;
+begin
+  // Если n простое, возвращаем его в списке.
+  if IsPrime(n) then exit(Lst(n));
+  // Делители, меньшие MaxInt факторизуем, прочие - обрабатываем с помощью SQUFOF
+  // Помним, что SQUFOF может вернуть составной делитель !!!
+  Result := [];
+  while n > 1 do
+  begin
+    var delim := SQUFOF(n);
+    if delim = -1 then
+    begin
+      delim := PollardRhoOneFactor(n);
+      if delim = -1 then raise new School_FactorizationError
+          ($'Ошибка факторизации PollardRho({n})')
+    end;
+    if delim = n then
+    begin
+      Result.Add(n);              // n - простое, делитель равен n
+      n := n div delim;
+    end
+    else
+    begin
+      n := n div delim;
+      if IsPrime(delim) then Result.Add(delim)
+      else if delim <= MaxInt then Result.AddRange(PrimeFactors(delim))
+      else raise new School_FactorizationError
+              ($'Ошибка факторизации PrimeFactors: делитель {delim}, частное {n}');
+    end
+  end;
+  Sort(Result);  
+end;
+
+/// Список простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается пустой список.
+/// Для простого n возвращается список из одного числа n.
+/// Для составных чисел n >= 4 возвращается список всех простых факторов.
+function PrimeFactors(Self: int64): List<int64>; extensionmethod := PrimeFactors(Self);
+
+/// Количество простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается 0.
-/// Для простых чисел возвращается 1.
+/// Для простого n возвращается 1.
 /// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
 function PrimeFactorsCount(n: integer): integer;
 begin
@@ -949,17 +1209,305 @@ begin
   else if n > 1 then Result += 1
 end;
 
-/// Количество простых факторов (простых делителей) числа n
+/// Количество простых факторов (простых делителей) натурального числа n
 /// Для n < 2 возвращается 0.
 /// Для простых чисел возвращается 1.
 /// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
 function PrimeFactorsCount(Self: integer): integer; extensionmethod := PrimeFactorsCount(Self);
+
+/// Количество простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается 0.
+/// Для простого n возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
+function PrimeFactorsCount(n: int64): integer;
+begin
+  if IsPrime(n) then exit(1);
+  Result := 0;
+  while n > 1 do
+  begin
+    var delim := SQUFOF(n);
+    if delim = -1 then
+    begin
+      delim := PollardRhoOneFactor(n);
+      if delim = -1 then raise new School_FactorizationError
+          ($'Ошибка факторизации PollardRho({n})')
+    end;
+    if delim = n then
+    begin
+      Result += 1;
+      n := n div delim;
+    end
+    else
+    begin
+      n := n div delim;
+      if IsPrime(delim) then Result += 1
+      else if delim <= MaxInt then Result += PrimeFactorsCount(integer(delim))
+      else raise new School_FactorizationError
+              ($'Ошибка факторизации PrimeFactorsCount: делитель {delim}, частное {n}');
+    end
+  end
+end;
+
+/// Количество простых факторов (простых делителей) натурального числа n
+/// Для n < 2 возвращается 0.
+/// Для простых чисел возвращается 1.
+/// Для составных чисел при n >= 4 возвращается количество всех простых факторов.
+function PrimeFactorsCount(Self: int64): integer; extensionmethod := PrimeFactorsCount(Self);
 
 /// Разложение числа на простые множители
 function Factorize(n: integer): List<integer> := PrimeFactors(n);
 
 /// Разложение числа на простые множители
 function Factorize(Self: integer): List<integer>; extensionmethod := PrimeFactors(Self);
+
+/// Разложение числа на простые множители
+function Factorize(n: int64): List<int64> := PrimeFactors(n);
+
+/// Разложение числа на простые множители
+function Factorize(Self: int64): List<int64>; extensionmethod := PrimeFactors(Self);
+
+{$endregion}
+
+{$region BPSW}
+
+// Портировано с языка С++ и переработано С.С.Михалковичем
+// источник: http://e-maxx.ru/algo/bpsw
+
+function NormalizeMod(a, m: int64): int64;
+begin
+  var r := a mod m;
+  if r < 0 then r += m;
+  Result := r
+end;
+
+// Computes (a + b) mod m without overflow.
+// Precondition: 0 <= a < m, 0 <= b < m, m > 0.
+function AddMod(a, b, m: int64) := a >= m - b ? a - (m - b) : a + b;
+
+// Computes (a - b) mod m without overflow.
+// Precondition: 0 <= a < m, 0 <= b < m, m > 0.
+function SubMod(a, b, m: int64) := a >= b ? a - b : m - (b - a);
+
+// Computes a * b mod m without Int64 multiplication overflow.
+function MulMod(a, b, m: int64): int64;
+begin
+  var x := NormalizeMod(a, m);
+  var y := NormalizeMod(b, m);
+  Result := 0;
+  while y > 0 do
+  begin
+    if y mod 2 = 1 then Result := AddMod(Result, x, m);
+    y := y div 2;
+    if y > 0 then x := AddMod(x, x, m)
+  end
+end;
+
+function PowMod(a, k, m: int64): int64;
+begin
+  var x := NormalizeMod(a, m);
+  Result := 1 mod m;
+  while k > 0 do
+  begin
+    if k mod 2 = 1 then Result := MulMod(Result, x, m);
+    k := k div 2;
+    if k > 0 then x := MulMod(x, x, m)
+  end
+end;
+
+// n = q * 2^p, q is odd
+procedure DecomposePowerOfTwo(n: int64; var p, q: int64);
+begin
+  (p, q) := (0, n);
+  while q mod 2 = 0 do
+  begin
+    p += 1;
+    q := q div 2
+  end
+end;
+
+function BitLength(n: int64): integer;
+begin
+  if n = 0 then exit(1);
+  var len := 0;
+  while n > 0 do
+  begin
+    len += 1;
+    n := n div 2
+  end;
+  Result := len;
+end;
+
+function TestBit(n: int64; k: integer): boolean;
+begin
+  for var i := 1 to k do
+    n := n div 2;
+  Result := n mod 2 = 1;
+end;
+
+function IsPerfectSquare(n: int64): boolean;
+begin
+  if n < 0 then exit(False);
+  var lo: int64 := 0;
+  var hi: int64 := 3037000500; // > sqrt(Int64.MaxValue)
+  while lo <= hi do
+  begin
+    var mid := lo + (hi - lo) div 2;
+    if (mid <> 0) and (mid > n div mid) then hi := mid - 1
+    else
+    begin
+      var sq := mid * mid;
+      if sq = n then exit(True);
+      lo := mid + 1
+    end
+  end;
+  Result := False;
+end;
+
+// Jacobi symbol (a / b), b must be odd and positive.
+function Jacobi(a, b: int64): integer;
+begin
+  if a = 0 then exit(0);
+  if a = 1 then exit(1);
+  if a < 0 then
+  begin
+    if b mod 4 = 1 then Result := Jacobi(-a, b)
+    else Result := -Jacobi(-a, b);
+    exit;
+  end;
+  var e, a1: int64;
+  DecomposePowerOfTwo(a, e, a1);
+  var s: integer;
+  if (e mod 2 = 0) or (b mod 8 = 1) or (b mod 8 = 7) then s := 1
+  else s := -1;
+  if (b mod 4 = 3) and (a1 mod 4 = 3) then s := -s;
+  if a1 = 1 then Result := s
+  else Result := s * Jacobi(b mod a1, a1);
+end;
+
+// Strong Miller-Rabin test for one base.
+function MillerRabin(n, base: int64): boolean;
+begin
+  if n = 2 then exit(True);
+  if (n < 2) or (n mod 2 = 0) then exit(False);
+  var b := base;
+  if b < 2 then b := 2;
+  while True do
+  begin
+    var g := GCD(n, b);
+    if g = 1 then break;
+    if n > g then exit(False);
+    b += 1;
+  end;
+  var p, q: int64;
+  DecomposePowerOfTwo(n - 1, p, q);
+  var rem := PowMod(b, q, n);
+  if (rem = 1) or (rem = n - 1) then exit(True);
+  for var i: int64 := 1 to p - 1 do
+  begin
+    rem := MulMod(rem, rem, n);
+    if rem = n - 1 then exit(True);
+  end;
+  Result := False;
+end;
+
+// Computes (a + b) / 2 mod n without overflow.
+// Used in Lucas sequences, where division by 2 is done after adding n if needed.
+function HalfAddMod(a, b, n: int64): int64;
+begin
+  var res: int64 := 0;
+  res := AddMod(res, a div 2, n);
+  res := AddMod(res, b div 2, n);
+  if (a mod 2 = 1) and (b mod 2 = 1) then res := AddMod(res, 1, n)
+  else if (a mod 2) <> (b mod 2) then
+  begin
+    res := AddMod(res, n div 2, n);
+    res := AddMod(res, 1, n);
+  end;
+  Result := res;
+end;
+
+// Strong Lucas-Selfridge probable prime test.
+function LucasSelfridge(n: int64): boolean;
+begin
+  if n = 2 then exit(True);
+  if (n < 2) or (n mod 2 = 0) then exit(False);
+  if IsPerfectSquare(n) then exit(False);
+  // Selfridge parameters:
+  // D = 5, -7, 9, -11, 13, ...
+  var dd: int64 := 0;
+  var dAbs: int64 := 5;
+  var dSign: int64 := 1;
+  while True do
+  begin
+    dd := dAbs * dSign;
+    var g := GCD(n, dAbs);
+    if (1 < g) and (g < n) then exit(False);
+    if Jacobi(dd, n) = -1 then break;
+    dSign := -dSign;
+    dAbs += 2;
+  end;
+  var pParam: int64 := 1;
+  var qParam: int64 := (pParam * pParam - dd) div 4;
+  // n + 1 = d * 2^s
+  var s, d: int64;
+  DecomposePowerOfTwo(n + 1, s, d);
+  var u: int64 := 1;
+  var v: int64 := pParam;
+  var u2m: int64 := 1;
+  var v2m: int64 := pParam;
+  var qm := NormalizeMod(qParam, n);
+  var qm2 := AddMod(qm, qm, n);
+  var qkd := NormalizeMod(qParam, n);
+  var bits := BitLength(d);
+  for var bit := 1 to bits - 1 do
+  begin
+    u2m := MulMod(u2m, v2m, n);
+    v2m := SubMod(MulMod(v2m, v2m, n), qm2, n);
+    qm := MulMod(qm, qm, n);
+    qm2 := AddMod(qm, qm, n);
+    if TestBit(d, bit) then
+    begin
+      var t1 := MulMod(u2m, v, n);
+      var t2 := MulMod(v2m, u, n);
+      var t3 := MulMod(v2m, v, n);
+      var t4 := MulMod(MulMod(u2m, u, n), dd, n);
+      u := HalfAddMod(t1, t2, n);
+      v := HalfAddMod(t3, t4, n);
+      qkd := MulMod(qkd, qm, n)
+    end
+  end;
+  if (u = 0) or (v = 0) then exit(True);
+  var qkd2 := AddMod(qkd, qkd, n);
+  var r: int64 := 1;
+  while r < s do
+  begin
+    v := SubMod(MulMod(v, v, n), qkd2, n);
+    if v = 0 then exit(True);
+    if r < s - 1 then
+    begin
+      qkd := MulMod(qkd, qkd, n);
+      qkd2 := AddMod(qkd, qkd, n);
+    end;
+    r += 1;
+  end;
+  Result := False;
+end;
+
+// Baillie-Pomerance-Selfridge-Wagstaff primality test.
+function IsPrimeBPSW(n: int64): boolean;
+begin
+  if n <= MaxInt then exit(IsPrime(integer(n)));
+  // Strong Miller-Rabin base 2
+  if not MillerRabin(n, 2) then exit(False);
+  // Strong Lucas-Selfridge
+  Result := LucasSelfridge(n);
+end;
+
+/// возвращает True, если натуральное n простое и False в противном случае
+function IsPrime(n: int64): boolean := IsPrimeBPSW(n);
+
+/// возвращает True, если натуральное n простое и False в противном случае
+function IsPrime(Self: int64): boolean; extensionmethod := IsPrimeBPSW(Self);
 
 {$endregion}
 
@@ -1017,6 +1565,9 @@ function Digits(Self: Biginteger; base: integer := 10): List<integer>;
 /// Функция выполняет действие, обратное функции Digits
 function DigitsToInt64(ext: List<integer>; base: integer): int64;
 begin
+  if not ext.All(d -> d < base) then
+    raise new School_InvalidBase
+        ($'DigitsToInt64: Недопустимое основание {base}');
   Result := 0;
   var p := int64(1);
   for var i := ext.Count -1 downto 0 do
@@ -1034,6 +1585,9 @@ function DigitsToInt64(Self: List<integer>; base: integer := 10): int64;
 /// Функция выполняет действие, обратное функции Digits,
 function DigitsToBigInteger(ext: List<integer>; base: integer): BigInteger;
 begin
+  if not ext.All(d -> d < base) then
+    raise new School_InvalidBase
+        ($'DigitsToBigInteger: Недопустимое основание {base}');
   Result := BigInteger.Zero;
   var p := BigInteger.One;
   for var i := ext.Count -1 downto 0 do
@@ -1050,7 +1604,7 @@ function DigitsToBigInteger(Self: List<integer>; base: integer := 10): BigIntege
 
 {$region Divisors}
 
-/// возвращает список всех делителей натурального числа n
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
 // на основе идеи А. Богданова
 function Divisors(n: integer): List<integer>;
 begin
@@ -1076,15 +1630,45 @@ end;
 ///--
 function Divizors(n: integer) := Divisors(n);
 
-/// Возвращает список делителей натурального числа
-function Divisors(Self: integer): List<integer>; extensionmethod :=
-Divisors(Self);
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
+function Divisors(Self: integer): List<integer>; extensionmethod := Divisors(Self);
 
 ///--
 function Divizors(Self: integer): List<integer>; extensionmethod :=
 Divisors(Self);
 
-/// Количество всех делителей числа n, включая 1 и само число
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
+// код предоставлен С.С. Михалковичем
+function Divisors(n: int64): List<int64>;
+begin
+  var PF := PrimeFactors(n);
+  Result := Lst(int64(1));
+  var i := 0;
+  while i < PF.Count do
+  begin
+    var p := PF[i];
+    var e := 0;
+    while (i < PF.Count) and (PF[i] = p) do
+    begin
+      e += 1;
+      i += 1
+    end;
+    var cur := Result.Count; // текущие делители, ДО учёта p
+    var pk := int64(1);
+    for var k := 1 to e do
+    begin
+      pk *= p;
+      for var j := 0 to cur - 1 do
+        Result.Add(Result[j] * pk)
+    end
+  end;
+  Result.Sort
+end;
+
+/// Возвращает список всех делителей натурального числа n, включая 1 и n
+function Divisors(Self: int64): List<int64>; extensionmethod := Divisors(Self);
+
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
 function DivisorsCount(n: integer): integer;
 begin
   Result := 1;
@@ -1104,8 +1688,38 @@ begin
       Result += 1;
 end;
 
-/// Количество всех делителей числа, включая 1 и само число
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
 function DivisorsCount(Self: integer): integer; extensionmethod := DivisorsCount(Self);
+
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
+function DivisorsCount(n: int64): integer;
+begin
+  var PF := PrimeFactors(n);
+  var LP := Lst(int64(1));
+  var i := 0;
+  while i < PF.Count do
+  begin
+    var p := PF[i];
+    var e := 0;
+    while (i < PF.Count) and (PF[i] = p) do
+    begin
+      e += 1;
+      i += 1
+    end;
+    var cur := LP.Count; // текущие делители, ДО учёта p
+    var pk := int64(1);
+    for var k := 1 to e do
+    begin
+      pk *= p;
+      for var j := 0 to cur - 1 do
+        LP.Add(LP[j] * pk)
+    end
+  end;
+  Result := LP.Count
+end;
+
+/// Возвращает количество всех делителей натурального числа n, включая 1 и n
+function DivisorsCount(Self: int64): integer; extensionmethod := DivisorsCount(Self);
 
 {$endregion}
 
@@ -1116,37 +1730,6 @@ function SinDegrees(x: real): real := Sin(DegToRad(x));
 function CosDegrees(x: real): real := Cos(DegToRad(x));
 
 function TanDegrees(x: real): real := Tan(DegToRad(x));
-
-{$endregion}
-
-{$region Random}
-
-/// Возвращает вещественный массив, заполненный случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function ArrRandomReal(n: integer; a, b: real; t: integer): array of real;
-begin
-  Result := new real[n];
-  for var i := 0 to Result.Length - 1 do
-    Result[i] := Round(Random * (b - a) + a, t);
-end;
-
-/// Возвращает вещественную последовательность, заполненную случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function SeqRandomReal(n: integer; a, b: real; t: integer): sequence of real;
-begin
-  loop n do
-    yield Round(Random * (b - a) + a, t)
-end;
-
-/// Возвращает вещественную матрицу, заполненную случайными значениями
-/// на интервале [a; b) с t знаками в дробной части
-function MatrRandomReal(m: integer; n: integer; a, b: real; t: integer): array [,] of real;
-begin
-  Result := new real[m, n];
-  for var i := 0 to Result.RowCount - 1 do
-    for var j := 0 to Result.ColCount - 1 do
-      Result[i, j] := Round(Random * (b - a) + a, t);
-end;
 
 {$endregion}
 
@@ -1358,6 +1941,11 @@ end;
 /// Если j больше длины строки target, символ s[i] удаляется.
 function Translate(Self, source, target: string): string;
   extensionmethod := Translate(Self, source, target);
+  
+/// Преобразует строку в массив int64
+function ToInts64(Self: string): array of int64; extensionmethod :=
+        Self.ToWords(' '#9#10#13).ConvertAll(s -> StrToInt64(s));
+// на базе ToReals
 
 {$endregion}
 

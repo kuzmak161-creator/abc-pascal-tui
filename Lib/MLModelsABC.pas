@@ -9,7 +9,9 @@
 /// • Pipeline для объединения преобразований и модели.
 ///
 /// Все алгоритмы работают с числовыми данными:
-/// X — Matrix (объекты × признаки), y — Vector (целевая переменная).
+/// X — Matrix (объекты × признаки),
+/// y — Vector в задачах регрессии
+/// или массив целых меток в задачах классификации.
 unit MLModelsABC;      
 
 // =============================================================
@@ -39,6 +41,12 @@ uses MLCoreABC;
 uses LinearAlgebraML;
 
 type
+  MatrixPipeline = class;
+  UnsupervisedMatrixPipelineBase = class;
+  ClassificationMatrixPipeline = class;
+  RegressionMatrixPipeline = class;
+  ClusteringMatrixPipeline = class;
+
 {$region Activations}
 /// Активационные функции для моделей
   Activations = static class
@@ -77,6 +85,44 @@ type
   
   IModel = MLCoreABC.IModel;
 
+  ClassifierLabelHelper = class(IClassifierInternal)
+  private
+    /// Внешние целочисленные метки классов в порядке внутреннего кодирования модели.
+    /// Значение fClassValues[c] — это метка класса, соответствующая внутреннему коду c.
+    fClassValues: array of integer;
+    fClassLabels: array of string;
+    /// Обратное отображение внешней целочисленной метки класса в строковую метку.
+    /// Используется, когда строковую метку нужно получить по результату Predict.
+    fValueToLabel: Dictionary<integer, string>;
+    procedure RebuildValueToLabel;
+  public
+    procedure SetClassValues(values: array of integer);
+    procedure BuildDefaultClassLabels;
+    function DecodePredictions(predInternal: array of integer): array of integer;
+    function ClassValueAt(idx: integer): integer;
+    function ClassLabelOfValue(value: integer): string;
+    procedure SetClassLabels(classes: array of string);
+    function GetClassLabels: array of string;
+  end;
+
+  LinearDecisionBoundary = record
+    A, B, C: real;
+    function Evaluate(x, y: real): real;
+    function Y(x: real): real;
+    function Side(x, y: real): integer;
+    function Distance(x, y: real): real;
+    function ToString: string; override;
+    function Coefficients: (real,real,real) := (A,B,C);
+  end;
+
+  LinearRegressionLine = record
+    K, B: real;
+    function Evaluate(x: real): real;
+    function Y(x: real): real;
+    function ToString: string; override;
+    function Coefficients: (real,real) := (K,B);
+  end;
+
 /// Линейная регрессионная модель (метод наименьших квадратов).
 /// Предсказывает числовое значение по линейной комбинации признаков
 /// Используется в задачах регрессии при отсутствии выраженной
@@ -95,7 +141,10 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: Vector): IRegressor;
+
+    /// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
 
     /// Предсказывает значения для матрицы признаков
     /// Возвращает вектор длины m
@@ -115,6 +164,10 @@ type
 /// После вызова Fit значение становится True.
 /// Используется для проверки корректности вызова Predict.
     property IsFitted: boolean read fFitted;
+
+    /// Возвращает уравнение регрессионной прямой y = k*x + b
+    /// для модели с одним признаком.
+    function RegressionLine: LinearRegressionLine;
     
     function ToString: string; override;
 
@@ -149,8 +202,11 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: Vector): IRegressor;
   
+    /// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
+
     /// Предсказывает непрерывные значения для объектов X.
     /// Результат — вектор длины m.
     function Predict(X: Matrix): Vector;
@@ -218,8 +274,11 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: Vector): IRegressor;
   
+    /// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
+
     /// Предсказывает непрерывные значения для объектов X.
     /// Результат — вектор длины m.
     function Predict(X: Matrix): Vector;
@@ -277,8 +336,11 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-      function Fit(X: Matrix; y: Vector): ISupervisedModel;
+      function Fit(X: Matrix; y: Vector): IRegressor;
   
+      /// Возвращает числовое предсказание для одного объекта X.
+      function PredictOne(X: Vector): real;
+
       /// Предсказывает значения целевой переменной для входных данных.
       /// X — матрица признаков размера [nSamples x nFeatures].
       /// Возвращает вектор предсказаний длины nSamples.
@@ -327,10 +389,7 @@ type
     fTol: real;
     fCheckConvergence: boolean;
     fMinImprovement: real;
-    
-    fClassLabels: array of string; 
-    
-    fUseFastExp: boolean;
+    fLabels: ClassifierLabelHelper;
     
     function GetWeights: Matrix;
     function GetIntercept: Vector;
@@ -341,11 +400,10 @@ type
     constructor Create(
       lambda: real := 0.0;
       learningRate: real := 0.01;
-      epochs: integer := 1000;
+      epochs: integer := 300;
       tol: real := 1e-6;
       checkConvergence: boolean := true;
-      minImprovement: real := 1e-8;
-      useFastExp: boolean := True
+      minImprovement: real := 1e-8
     );
   
 /// Обучает модель логистической регрессии.
@@ -355,25 +413,36 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: array of integer): IClassifier;
+
+    /// Возвращает метку класса для одного объекта X
+    /// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
     
-    /// Возвращает матрицу вероятностей (m x k).
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
+    function PredictProbaOne(X: Vector): Vector;
+
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
     function PredictProba(X: Matrix): Matrix;
   
-    /// Возвращает массив меток классов в порядке столбцов PredictProba.
-    function GetClasses: array of real;
-
-    /// Возвращает предсказанные классы для объектов из X.
-    /// Результат — вектор значений, где каждый элемент соответствует классу объекта.
-    /// Порядок элементов соответствует строкам матрицы X.
-    /// Требует предварительного вызова Fit.
-    function Predict(X: Matrix): Vector;
+    /// Возвращает метки классов для объектов из X
+    /// в том же виде, в каком они были поданы модели при обучении.
+    function Predict(X: Matrix): array of integer;
     
-    /// Возвращает предсказанные метки классов для объектов из X.
-    /// Каждый элемент результата — индекс класса (целое число).
+    /// Возвращает исходные строковые метки классов для объектов из X.
     /// Порядок элементов соответствует строкам матрицы X.
     /// Требует предварительного вызова Fit.
-    function PredictLabels(X: Matrix): array of integer;
+    function PredictLabels(X: Matrix): array of string;
   
 /// Показывает, была ли модель обучена.
 /// Если false — вызов Predict или PredictProba приведет к ошибке.
@@ -390,10 +459,14 @@ type
     
     function Name: string := Self.GetType.Name;
     
+    /// Возвращает коэффициенты разделяющей прямой A*x + B*y + C = 0
+    /// для бинарной задачи с двумя признаками.
+    function DecisionBoundary: LinearDecisionBoundary;
+    
     procedure SetClassLabels(classes: array of string);
     
     function GetClassLabels: array of string;
-
+    
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
     function Clone: IModel;
@@ -410,6 +483,25 @@ type
     
 /// Создает глубокую копию узла вместе со всеми подузлами
     function Clone: DecisionTreeNode;
+  end;
+
+  /// Представление решающего дерева с именами признаков и классов.
+  /// Используется для печати и последующей визуализации.
+  DecisionTreeView = class
+  private
+    fRoot: DecisionTreeNode;
+    fFeatureNames: array of string;
+    fClassNames: array of string;
+
+  public
+    constructor Create(
+      root: DecisionTreeNode;
+      featureNames: array of string;
+      classNames: array of string
+    );
+
+    /// Возвращает текстовое представление дерева.
+    function ToString: string; override;
   end;
   
 /// Результат поиска лучшего разбиения узла дерева
@@ -540,7 +632,7 @@ type
     );
 
     procedure Fit(X: Matrix; y: Vector);     // y уже 0..K-1
-    function Predict(X: Matrix): Vector;     // возвращает 0..K-1
+    function Predict(X: Matrix): array of integer;
     function PredictRow(X: Matrix; row: integer): integer;
     
   private
@@ -558,6 +650,7 @@ type
     property FeatureImportances: Vector read GetFeatureImportances;
 
     function PredictOne(x: Vector; node: DecisionTreeNode): integer;
+    function RootNode: DecisionTreeNode;
     function Clone: DecisionTreeCore;
   end;  
   
@@ -583,7 +676,7 @@ type
   
     fCore: DecisionTreeCore;
     fIndexToClass: array of integer;
-    fClassLabels: array of string;
+    fLabels: ClassifierLabelHelper;
 
   public
 /// Создает классификационное дерево:
@@ -602,17 +695,20 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние дерева НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; 
+    function Fit(X: Matrix; y: array of integer): IClassifier;
+
+/// Возвращает метку класса для одного объекта X
+/// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
     
-/// Выполняет предсказание меток классов для X.
-/// Для каждого объекта возвращается класс, соответствующий листу дерева.
-    function Predict(X: Matrix): Vector; 
+/// Возвращает метки классов для объектов из X
+/// в том же виде, в каком они были поданы модели при обучении.
+    function Predict(X: Matrix): array of integer; 
     
-    /// Возвращает предсказанные метки классов для объектов из X.
-    /// Каждый элемент результата — индекс класса (целое число).
+    /// Возвращает исходные строковые метки классов для объектов из X.
     /// Порядок элементов соответствует строкам матрицы X.
     /// Требует предварительного вызова Fit.
-    function PredictLabels(X: Matrix): array of integer;
+    function PredictLabels(X: Matrix): array of string;
     
 /// Возвращает строковое представление модели.
     function ToString: string; override;
@@ -626,6 +722,11 @@ type
     procedure SetClassLabels(classes: array of string);
     
     function GetClassLabels: array of string;
+
+    function Tree(
+      featureNames: array of string;
+      classNames: array of string
+    ): DecisionTreeView;
     
 /// Возвращает true, если дерево обучено.
 /// Если false — Predict вызовет ошибку.
@@ -689,7 +790,7 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние дерева НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; virtual; abstract;
+    function Fit(X: Matrix; y: Vector): IRegressor; virtual; abstract;
 
 /// Выполняет предсказание для матрицы X.
 /// Возвращает вектор прогнозов.
@@ -768,7 +869,10 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние дерева НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; override;
+    function Fit(X: Matrix; y: Vector): IRegressor; override;
+
+/// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
 
 /// Выполняет предсказание для всех объектов X.
 /// Возвращает вектор вещественных значений.
@@ -792,6 +896,11 @@ type
     function ToString: string; override;
     
     function Name: string := Self.GetType.Name;
+
+    function Tree(
+      featureNames: array of string;
+      classNames: array of string := nil
+    ): DecisionTreeView;
   end;
   
 
@@ -874,13 +983,6 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние ансамбля НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; virtual; abstract;
-
-/// Выполняет предсказание для матрицы X.
-/// В регрессии — усреднение предсказаний деревьев.
-/// В классификации — голосование (majority vote) или усреднение вероятностей.    
-    function Predict(X: Matrix): Vector; virtual; abstract;
-
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
     function Clone: IModel; virtual; abstract;
@@ -920,7 +1022,7 @@ type
       maxDepth: integer := -1;
       minSamplesSplit: integer := 2; 
       minSamplesLeaf: integer := 1;
-      maxFeaturesMode: TMaxFeaturesMode := TMaxFeaturesMode.HalfFeatures;
+      maxFeaturesMode: TMaxFeaturesMode := TMaxFeaturesMode.AllFeatures;
       computeOOB: boolean := False;
       seed: integer := -1);
 
@@ -932,11 +1034,14 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние ансамбля НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; override;
+    function Fit(X: Matrix; y: Vector): IRegressor; 
+
+/// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
 
 /// Выполняет предсказание для X.
 /// Итоговое значение — среднее предсказаний всех деревьев ансамбля.
-    function Predict(X: Matrix): Vector; override;
+    function Predict(X: Matrix): Vector;
 
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
@@ -959,9 +1064,8 @@ type
   private
     fTrees: array of DecisionTreeCore;
     fIndexToClass: array of integer;
-    fClassToIndex: Dictionary<integer, integer>;
     fClassCount: integer;
-    fClassLabels: array of string;
+    fLabels: ClassifierLabelHelper;
   public
 /// Создает классификационный случайный лес:
 ///   • nTrees — число деревьев в ансамбле.
@@ -986,25 +1090,37 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние ансамбля НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; override;
+    function Fit(X: Matrix; y: array of integer): IClassifier;
 
-/// Выполняет предсказание меток классов для матрицы X.
+/// Возвращает метку класса для одного объекта X
+/// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
+
+/// Возвращает метки классов для объектов из X
+/// в том же виде, в каком они были поданы модели при обучении.
 /// Для каждого объекта агрегируются предсказания всех деревьев.
 /// Итоговый класс определяется большинством голосов или максимальной суммарной вероятностью.
-    function Predict(X: Matrix): Vector; override;
+    function Predict(X: Matrix): array of integer;
     
-    /// Возвращает предсказанные метки классов для объектов из X.
-    /// Каждый элемент результата — исходная метка класса (целое число).
+    /// Возвращает исходные строковые метки классов для объектов из X.
     /// Порядок элементов соответствует строкам матрицы X.
     /// Требует предварительного вызова Fit.
-    function PredictLabels(X: Matrix): array of integer;
+    function PredictLabels(X: Matrix): array of string;
     
-    /// Возвращает оценки вероятностей принадлежности объектов из X к каждому классу.
-    /// Результат — матрица размера [nSamples x nClasses].
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
     /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
-    /// Порядок классов соответствует fIndexToClass.
-    /// Сумма вероятностей по строке равна 1.
-    /// Требует предварительного вызова Fit.
+    /// Сумма вероятностей в каждой строке равна 1.
+    function PredictProbaOne(X: Vector): Vector;
+
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
     function PredictProba(X: Matrix): Matrix;
 
 /// Копирует только конфигурацию модели (без обученного состояния).
@@ -1017,8 +1133,6 @@ type
 
 /// Возвращает строковое представление модели.
     function ToString: string; override;
-    
-    function GetClasses: array of real;
     
     function Name: string := Self.GetType.Name;
     
@@ -1112,7 +1226,7 @@ type
     procedure ComputePseudoResiduals(y, yPred: Vector; r: Vector);
     
     function FitInternal(XTrain: Matrix; yTrain: Vector;
-      XVal: Matrix; yVal: Vector; useValidation: boolean): ISupervisedModel;
+      XVal: Matrix; yVal: Vector; useValidation: boolean): IRegressor;
       
     function ComputeQuantile(y: Vector; alpha: real): real;
 
@@ -1159,7 +1273,10 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: Vector): IRegressor; 
+
+/// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
     
 /// Предсказывает значения целевой переменной.
 /// Используются все обученные деревья.
@@ -1174,7 +1291,7 @@ type
 /// обучение останавливается, если метрика не улучшается
 /// в течение earlyStoppingPatience итераций.
 /// Возвращает обученную модель.
-    function FitWithValidation(XTrain: Matrix; yTrain: Vector; XVal: Matrix; yVal: Vector): ISupervisedModel;
+    function FitWithValidation(XTrain: Matrix; yTrain: Vector; XVal: Matrix; yVal: Vector): IRegressor;
 
 /// История значения функции потерь на обучающей выборке.
 /// Один элемент на итерацию бустинга.    
@@ -1262,12 +1379,11 @@ type
     fRandomSeed: integer;
     fRng: System.Random;
     fUserProvidedSeed: boolean;
-    
-    fClassLabels: array of string;
+    fLabels: ClassifierLabelHelper;
 
   private
-    function FitInternal(XTrain: Matrix; yTrain: Vector; XVal: Matrix; yVal: Vector; useValidation: boolean)
-      : ISupervisedModel;
+    function FitInternal(XTrain: Matrix; yTrain: array of integer; XVal: Matrix; yVal: array of integer; useValidation: boolean)
+      : IClassifier;
 
     //procedure BuildClassMapping(y: Vector);
     //function ApplyLabelEncoding(y: Vector): array of integer;
@@ -1310,27 +1426,41 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: array of integer): IClassifier;
+
+/// Возвращает метку класса для одного объекта X
+/// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
     
 /// Обучает модель градиентного бустинга с использованием валидационной выборки.
 /// Поддерживает early stopping:
 ///   обучение останавливается, если метрика не улучшается в течение earlyStoppingPatience итераций.
 /// Возвращает обученную модель.
-    function FitWithValidation(XTrain: Matrix; yTrain: Vector; XVal: Matrix; yVal: Vector): ISupervisedModel;
+    function FitWithValidation(XTrain: Matrix; yTrain: array of integer; XVal: Matrix; yVal: array of integer): IClassifier;
 
-/// Предсказывает метки классов.
-/// Возвращает исходные значения классов, а не внутренние индексы.
-    function Predict(X: Matrix): Vector;
+/// Возвращает метки классов для объектов из X
+/// в том же виде, в каком они были поданы модели при обучении.
+    function Predict(X: Matrix): array of integer;
     
-    function PredictLabels(X: Matrix): array of integer;
+    /// Возвращает исходные строковые метки классов для объектов из X.
+    function PredictLabels(X: Matrix): array of string;
 
-/// Возвращает вероятности принадлежности к каждому классу.
-/// Размер результата: [nSamples x nClasses].
-/// Вероятности получаются через softmax.
+/// Возвращает матрицу вероятностей классов для всех объектов из X.
+/// Размер результата: nSamples × nClasses, где:
+/// - nSamples — число объектов в X;
+/// - nClasses — число классов модели.
+/// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+/// Сумма вероятностей в каждой строке равна 1.
+    function PredictProbaOne(X: Vector): Vector;
+
+/// Возвращает матрицу вероятностей классов для всех объектов из X.
+/// Размер результата: nSamples × nClasses, где:
+/// - nSamples — число объектов в X;
+/// - nClasses — число классов модели.
+/// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+/// Сумма вероятностей в каждой строке равна 1.
     function PredictProba(X: Matrix): Matrix;
     
-    function GetClasses: array of real;
-
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
     function Clone: IModel;
@@ -1350,9 +1480,10 @@ type
 /// Используется для анализа обучения.
     function PredictStageProba(X: Matrix; m: integer): Matrix;
     
-/// Предсказывает классы по первым m итерациям бустинга.
+/// Предсказывает метки классов по первым m итерациям бустинга.
+/// Возвращает их в том же виде, в каком они были поданы модели при обучении.
 /// Удобно для построения learning curve.
-    function PredictStage(X: Matrix; m: integer): Vector;
+    function PredictStage(X: Matrix; m: integer): array of integer;
     
 /// Текущее количество деревьев в ансамбле.
     function TreeCount: integer := fEstimators.Count;
@@ -1367,11 +1498,11 @@ type
     
     function Name: string := Self.GetType.Name;
     
-    property IsFitted: boolean read fFitted;
-    
     procedure SetClassLabels(classes: array of string);
-
+    
     function GetClassLabels: array of string;
+    
+    property IsFitted: boolean read fFitted;
   end;
 
 //-----------------------------
@@ -1382,6 +1513,11 @@ type
     dist: double;
     idx: integer;
   end;
+
+  NeighborInfo = record
+    Index: integer;
+    Distance: real;
+  end;
  
 /// Режим взвешивания в алгоритме k ближайших соседей.
 /// Uniform — равномерное голосование/усреднение.
@@ -1391,7 +1527,7 @@ type
 /// Базовый абстрактный класс для алгоритма k ближайших соседей (kNN).
 /// Реализует общий механизм поиска k ближайших объектов,
 /// но не определяет способ агрегации (классификация или регрессия)
-  KNNBase = abstract class(IPredictiveModel)
+  KNNBase = abstract class(IModel)
   protected
     // ==== train state ====
     fXTrain: Matrix;
@@ -1405,6 +1541,7 @@ type
 
     // ==== common methods ====
     procedure ValidatePredictInput(X: Matrix);
+    procedure FillNeighborDistances(x: Vector);
 
     function SquaredL2(trainRow: integer; XTest: Matrix; testRow: integer): double;
 
@@ -1416,6 +1553,11 @@ type
     /// k — число ближайших соседей (k > 0).
     /// weighting — режим взвешивания соседей
     constructor Create(k: integer; weighting: KNNWeighting := KNNWeighting.Uniform);
+
+    /// Возвращает k ближайших обучающих объектов
+    /// для одного объекта X.
+    /// Индекс относится к обучающей выборке, переданной в Fit.
+    function GetNearestNeighbors(X: Vector): array of NeighborInfo;
     
 /// Обучает модель k ближайших соседей.
 ///   X — матрица m × n (m объектов, n признаков).
@@ -1424,12 +1566,6 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели (обучающая выборка) НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; virtual; abstract;
-    
-    /// Выполняет предсказание для матрицы признаков X.
-    /// Возвращает вектор предсказанных значений или меток
-    function Predict(X: Matrix): Vector; virtual; abstract;
-    
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
     function Clone: IModel; virtual; abstract;
@@ -1448,9 +1584,8 @@ type
   private
     // ==== classification state ====
     fYEnc: array of integer;
-    fClasses: array of double;
     fClassCount: integer;
-    fClassLabels: array of string;
+    fLabels: ClassifierLabelHelper;
 
     // ==== voting buffers ====
     fVotes: array of double;
@@ -1462,7 +1597,7 @@ type
     /// Создаёт классификатор kNN.
     /// k — число ближайших соседей (k > 0).
     /// weighting — режим взвешивания голосов соседей
-    constructor Create(k: integer; weighting: KNNWeighting := KNNWeighting.Uniform);
+    constructor Create(k: integer := 3; weighting: KNNWeighting := KNNWeighting.Uniform);
     
 /// Обучает классификатор k ближайших соседей.
 ///   X — матрица m × n (m объектов, n признаков).
@@ -1471,28 +1606,38 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели (обучающая выборка) НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; override;
+    function Fit(X: Matrix; y: array of integer): IClassifier;
+
+/// Возвращает метку класса для одного объекта X
+/// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
     
-/// Выполняет предсказание меток классов для объектов X.
-/// Возвращает вектор предсказанных меток.
+/// Возвращает метки классов для объектов из X
+/// в том же виде, в каком они были поданы модели при обучении.
 /// Не является потокобезопасным: не вызывать одновременно из нескольких потоков
 /// для одного экземпляра модели.
-    function Predict(X: Matrix): Vector; override;
+    function Predict(X: Matrix): array of integer;
     
-    /// Выполняет предсказание меток классов для объектов X.
-    /// Возвращает массив индексов классов.
+    /// Возвращает исходные строковые метки классов для объектов X.
     /// Не является потокобезопасным: не вызывать одновременно из нескольких потоков
     /// для одного экземпляра модели.
-    function PredictLabels(X: Matrix): array of integer;
+    function PredictLabels(X: Matrix): array of string;
     
-    /// Возвращает матрицу вероятностей размера (nSamples × nClasses).
-    /// Столбцы соответствуют классам в порядке, возвращаемом GetClasses().
-    /// Не является потокобезопасным: не вызывать одновременно из нескольких потоков
-    /// для одного экземпляра модели.
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
+    function PredictProbaOne(X: Vector): Vector;
+
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
     function PredictProba(X: Matrix): Matrix;
-    
-    /// Возвращает массив меток классов в порядке столбцов PredictProba
-    function GetClasses: array of real;
     
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
@@ -1527,11 +1672,14 @@ type
 ///
 /// Примечание:
 ///   • обученное состояние модели (обучающая выборка) НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel; override;
+    function Fit(X: Matrix; y: Vector): IRegressor; 
+
+    /// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
     
     /// Выполняет предсказание числовых значений для объектов X.
     /// Возвращает вектор предсказанных значений
-    function Predict(X: Matrix): Vector; override;
+    function Predict(X: Matrix): Vector;
     
 /// Копирует только конфигурацию модели (без обученного состояния).
 /// Используется для создания независимых экземпляров модели.
@@ -1539,7 +1687,6 @@ type
     
     function Name: string := Self.GetType.Name;
   end;
-  
   
   /// Модель кластеризации методом k-средних (KMeans).
   /// Разбивает объекты на k кластеров на основе евклидова расстояния.
@@ -1587,13 +1734,9 @@ type
 ///   • обученное состояние модели (центры кластеров) НЕ копируется методом Clone
     function Fit(X: Matrix): IUnsupervisedModel;
     
-    /// Возвращает индекс кластера для каждого объекта из X.
+    /// Возвращает номер кластера для каждого объекта из X.
     /// Требует предварительного вызова Fit.
-    function Predict(X: Matrix): Vector;
-    
-    /// Возвращает индекс кластера для каждого объекта из X.
-    /// Требует предварительного вызова Fit.
-    function PredictLabels(X: Matrix): array of integer;
+    function Predict(X: Matrix): array of integer;
 
     /// Выполняет обучение и сразу возвращает метки кластеров.
     function FitPredict(X: Matrix): array of integer;
@@ -1604,6 +1747,10 @@ type
     
     /// Количество кластеров
     function ClustersCount: integer;
+    /// Возвращает все центры кластеров как массив векторов.
+    function Centers: array of Vector;
+    /// Возвращает центр одного кластера.
+    function Center(clusterIndex: integer): Vector;
 
     /// Количество кластеров.
     property NClusters: integer read fNClusters;
@@ -1613,8 +1760,6 @@ type
     property Tol: real read fTol;
     /// Количество запусков алгоритма.
     property NInit: integer read fNInit;
-    /// Матрица центроидов (k × p).
-    property ClusterCenters: Matrix read fCenters;
     /// Значение инерции (сумма квадратов расстояний до центроидов).
     property Inertia: real read fInertia;
     /// Число выполненных итераций.
@@ -1661,9 +1806,6 @@ type
 ///   • обученное состояние модели (метки кластеров) НЕ копируется методом Clone
     function Fit(X: Matrix): IUnsupervisedModel;
   
-    /// Возвращает метки кластеров.
-    function PredictLabels(X: Matrix): array of integer;
-
     /// Возвращает метки после обучения.
     function FitPredict(X: Matrix): array of integer;
     
@@ -1684,33 +1826,33 @@ type
 {$endregion Models}
 
 {$region MatrixPipeline}
-/// Последовательный конвейер машинного обучения (supervised).
+/// Общая база для матричных конвейеров с учителем.
 /// Гарантирует строгий порядок выполнения шагов:
 ///   [преобразователи] → [модель].
 ///
 /// Поддерживает:
-///   • преобразователи без учёта целевой переменной (unsupervised);
-///   • преобразователи с учётом целевой переменной (supervised);
+///   • преобразователи без учёта целевой переменной;
+///   • преобразователи с учётом целевой переменной;
 ///   • одну финальную модель с учителем.
 ///
 /// Все преобразователи применяются последовательно к признакам X,
 /// после чего финальная модель обучается на (X, y).
 ///
 /// Обеспечивает единый интерфейс Fit(X, y) / Predict(X)
-/// и воспроизводимость полного процесса обучения
+/// и воспроизводимость полного процесса обучения.
 /// 
 /// MatrixPipeline используется, когда данные уже представлены 
-/// в виде Matrix X и Vector y
-  MatrixPipeline = class(ISupervisedModel)
-  private
+/// в виде Matrix X и вектора y.
+  MatrixPipeline = class(IModel)
+  protected
     fTransformers: List<ITransformer>;
-    fModel: ISupervisedModel;
+    fModel: IModel;
     fFitted: boolean;
   public
     /// Создаёт конвейер машинного обучения для заданной модели:
     ///   • model — модель, которая будет обучена
     ///     после последовательного применения всех преобразователей.
-    constructor Create(model: ISupervisedModel);
+    constructor Create(model: IModel);
     
     /// Создаёт пустой пайплайн (конвейер машинного обучения).
     /// Модель должна быть установлена через SetModel.
@@ -1735,17 +1877,17 @@ type
     // В отличие от этого, DataPipeline.Build используется,
     // когда исходные данные представлены в виде DataFrame
     // и требуется выполнить препроцессинг таблицы
-    // (Imputer, OneHotEncoder, LabelEncoder и др.)
+    // (Imputer, OneHotEncoder, OrdinalEncoder и др.)
     // перед преобразованием данных в Matrix/Vector.
     
     var pipe1 :=
-      MatrixPipeline.Build(
+      MatrixPipeline.BuildClassification(
         new StandardScaler,
         new LogisticRegression
       );
     
     var pipe2 :=
-      MatrixPipeline.Build(
+      MatrixPipeline.BuildClassification(
         new StandardScaler,
         new PCATransformer(2),
         new LogisticRegression
@@ -1773,15 +1915,26 @@ type
     Println('Scaler + PCA + LogisticRegression = ', score2);
 }    
 
-    /// Строит конвейер машинного обучения из последовательности шагов.
+    /// Строит матричный конвейер для задачи классификации.
     /// Шаги указываются в порядке выполнения:
-    ///   сначала преобразователи, затем модель.
-    /// Последний шаг обязан быть моделью (IModel).
-    /// Возвращает сконструированный конвейер.
-    static function Build(params steps: array of IPipelineStep): MatrixPipeline;
+    /// сначала преобразователи, затем модель.
+    /// Последний шаг должен быть моделью.
+    static function BuildClassification(params steps: array of IPipelineStep): ClassificationMatrixPipeline;
+
+    /// Строит матричный конвейер для задачи регрессии.
+    /// Шаги указываются в порядке выполнения:
+    /// сначала преобразователи, затем модель.
+    /// Последний шаг должен быть моделью.
+    static function BuildRegression(params steps: array of IPipelineStep): RegressionMatrixPipeline;
+
+    /// Строит матричный конвейер для задачи кластеризации.
+    /// Шаги указываются в порядке выполнения:
+    /// сначала преобразователи, затем модель.
+    /// Последний шаг должен быть моделью.
+    static function BuildClustering(params steps: array of IPipelineStep): ClusteringMatrixPipeline;
     
     /// Устанавливает или заменяет модель.
-    function SetModel(m: ISupervisedModel): MatrixPipeline;
+    function SetModel(m: IModel): MatrixPipeline;
   
     /// Добавляет преобразование в конец пайплайна
     function Add(t: ITransformer): MatrixPipeline;
@@ -1790,11 +1943,11 @@ type
 ///   X — матрица m × n (m объектов, n признаков).
 ///   y — вектор длины m с целевыми значениями.
 /// Последовательно обучает все трансформеры и применяет их к данным,
-/// после чего обучает финальную supervised-модель.
+/// после чего обучает финальную модель с учителем.
 ///
 /// Примечание:
 ///   • обученное состояние пайплайна НЕ копируется методом Clone
-    function Fit(X: Matrix; y: Vector): ISupervisedModel;
+    function Fit(X: Matrix; y: Vector): IModel;
   
     /// Применяет только преобразования (без модели)
     function Transform(X: Matrix): Matrix;
@@ -1802,8 +1955,12 @@ type
     /// Делает предсказание
     function Predict(X: Matrix): Vector;
   
-    /// Возвращает матрицу вероятностей (m x k)
-    /// для вероятностной модели в конце пайплайна.
+    /// Возвращает матрицу вероятностей классов для всех объектов из X.
+    /// Размер результата: nSamples × nClasses, где:
+    /// - nSamples — число объектов в X;
+    /// - nClasses — число классов модели.
+    /// Элемент [i, k] содержит вероятность того, что объект i принадлежит классу k.
+    /// Сумма вероятностей в каждой строке равна 1.
     function PredictProba(X: Matrix): Matrix;
     
     /// Показывает, был ли пайплайн обучен (вызван метод Fit).
@@ -1818,49 +1975,67 @@ type
     
     function Name: string := Self.GetType.Name;
   end;
+
+  /// Матричный конвейер для задачи классификации.
+  /// Predict возвращает метки классов в том же виде,
+  /// в каком они были поданы модели при обучении.
+  ClassificationMatrixPipeline = class(MatrixPipeline, IProbabilisticClassifier, IClassifierInternal)
+  public
+    function Fit(X: Matrix; y: array of integer): IClassifier;
+    /// Возвращает метку класса для одного объекта X
+    /// в том же виде, в каком метки были поданы модели при обучении.
+    function PredictOne(X: Vector): integer;
+    /// Возвращает метки классов для объектов из X
+    /// в том же виде, в каком они были поданы модели при обучении.
+    function Predict(X: Matrix): array of integer; reintroduce;
+    /// Возвращает строковые метки классов для объектов из X.
+    function PredictLabels(X: Matrix): array of string;
+    function PredictProbaOne(X: Vector): Vector;
+    function PredictProba(X: Matrix): Matrix; reintroduce;
+    procedure SetClassLabels(classes: array of string);
+    function GetClassLabels: array of string;
+    function Clone: IModel;
+  end;
+
+  RegressionMatrixPipeline = class(MatrixPipeline, IRegressor)
+  public
+    function Fit(X: Matrix; y: Vector): IRegressor; reintroduce;
+    /// Возвращает числовое предсказание для одного объекта X.
+    function PredictOne(X: Vector): real;
+    function Clone: IModel;
+  end;
   
-/// Последовательный конвейер машинного обучения (unsupervised).
-/// Гарантирует строгий порядок выполнения шагов:
-///   [преобразователи].
+/// Общая база для матричных конвейеров без учителя.
 ///
-/// Поддерживает:
-///   • преобразователи без учёта целевой переменной (unsupervised).
-///
-/// Все преобразователи применяются последовательно к признакам X.
-///
-/// Обеспечивает единый интерфейс Fit(X) / Transform(X)
-/// и воспроизводимость полного процесса преобразования данных.
-///
-/// UMatrixPipeline используется, когда данные уже представлены
-/// в виде Matrix X и отсутствует целевая переменная
-  UMatrixPipeline = class(IUnsupervisedModel)
-  private
+/// Поддерживает последовательность матричных преобразователей
+/// и одну финальную модель без учителя.
+/// Используется как базовый класс для специализированных
+/// матричных конвейеров, например ClusteringMatrixPipeline.
+  UnsupervisedMatrixPipelineBase = class(IUnsupervisedModel)
+  protected
     fTransformers: List<ITransformer>;
     fModel: IModel;
     fFitted: boolean;
   public
-  /// Создаёт конвейер машинного обучения для заданной модели:
-///   • model — модель, которая будет применена
-///     после последовательного применения всех преобразователей.
-/// Модель должна реализовывать интерфейс IModel (без учёта целевой переменной)
+    /// Создаёт конвейер машинного обучения для заданной модели.
+    /// Модель применяется после последовательного выполнения всех преобразователей.
     constructor Create(model: IModel);
 
-/// Создаёт пустой пайплайн (конвейер машинного обучения).
-/// Модель должна быть установлена через SetModel    
+    /// Создаёт пустой конвейер.
+    /// Модель должна быть установлена позже через SetModel.
     constructor Create;
   
-/// Строит конвейер машинного обучения из последовательности шагов.
-/// Шаги указываются в порядке выполнения:
-///   сначала преобразователи, затем модель.
-/// Последний шаг обязан быть моделью (IModel).
-/// Возвращает сконструированный конвейер.
-    static function Build(params steps: array of IPipelineStep): UMatrixPipeline;
+    /// Строит матричный конвейер для задачи кластеризации.
+    /// Шаги указываются в порядке выполнения:
+    /// сначала преобразователи, затем кластеризатор.
+    /// Последний шаг должен быть алгоритмом кластеризации.
+    static function Build(params steps: array of IPipelineStep): ClusteringMatrixPipeline;
   
-/// Устанавливает или заменяет модель.
-    function SetModel(m: IModel): UMatrixPipeline;
+    /// Устанавливает или заменяет модель.
+    function SetModel(m: IModel): UnsupervisedMatrixPipelineBase;
     
-/// Добавляет преобразование в конец пайплайна    
-    function Add(t: ITransformer): UMatrixPipeline;
+    /// Добавляет преобразование в конец пайплайна.
+    function Add(t: ITransformer): UnsupervisedMatrixPipelineBase;
   
 /// Обучает пайплайн на данных.
 ///   X — матрица m × n (m объектов, n признаков).
@@ -1888,7 +2063,7 @@ type
 /// Примечание:
 ///   • семантика результата зависит от конкретной модели
 ///     (например, кластерные метки, оценки и т.д.)    
-    function Predict(X: Matrix): Vector;
+    function Predict(X: Matrix): array of integer;
   
 /// Показывает, был ли пайплайн обучен (вызван метод Fit у шагов пайплайна).  
     property IsFitted: boolean read fFitted;
@@ -1901,6 +2076,20 @@ type
     function Clone: IModel;
     function Name: string := Self.GetType.Name;
   end;
+
+  /// Матричный конвейер для задачи кластеризации.
+  /// FitPredict работает с любым кластеризатором.
+  /// Predict для новых данных доступен только тогда,
+  /// когда финальная модель реализует IPredictiveClusterer
+  /// (например, KMeans).
+  /// Для алгоритмов вроде DBSCAN используйте FitPredict.
+  ClusteringMatrixPipeline = class(UnsupervisedMatrixPipelineBase)
+  public
+    /// Устанавливает или заменяет модель кластеризации.
+    function SetModel(m: IClusterer): ClusteringMatrixPipeline;
+    /// Обучает конвейер и сразу возвращает номера кластеров.
+    function FitPredict(X: Matrix): array of integer;
+  end;
   
 {$endregion MatrixPipeline}
   
@@ -1912,7 +2101,7 @@ type
 ///
 /// Примечание:
 ///   • стандартное отклонение вычисляется с делением на n
-///     (population variance, как в sklearn)
+///     (population variance, как в sklearn).
   StandardScaler = class(IUnsupervisedTransformer)
   private
     fMean: Vector;
@@ -1932,6 +2121,9 @@ type
 /// Примечание:
 ///   • вычисленные параметры НЕ копируются методом Clone
     function Fit(X: Matrix): IUnsupervisedTransformer;
+    
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix): Matrix;
   
     /// Применяет стандартизацию к данным.
     function Transform(X: Matrix): Matrix;
@@ -1957,7 +2149,7 @@ type
   
 /// Масштабирует признаки в заданный диапазон
 ///   (по умолчанию [0, 1]) на основе минимального и максимального значения каждого столбца.
-/// Используется для приведения признаков к единому масштабу без центрирования
+/// Используется для приведения признаков к единому масштабу без центрирования.
   MinMaxScaler = class(IUnsupervisedTransformer)
   private
     fMin: Vector;
@@ -1968,7 +2160,7 @@ type
     fRangeMax: real;
   public
     /// Создаёт MinMaxScaler с диапазоном [rangeMin, rangeMax].
-    /// По умолчанию масштабирование выполняется к [0, 1]
+    /// По умолчанию масштабирование выполняется к [0, 1].
     constructor Create(rangeMin: real := 0.0; rangeMax: real := 1.0);
     
 /// Вычисляет минимальные и максимальные значения по каждому признаку.
@@ -1976,8 +2168,11 @@ type
 /// Сохраняет параметры масштабирования для последующего применения в Transform.
 ///
 /// Примечание:
-///   • вычисленные параметры НЕ копируются методом Clone
+///   • вычисленные параметры НЕ копируются методом Clone.
     function Fit(X: Matrix): IUnsupervisedTransformer;
+    
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix): Matrix;
   
     /// Применяет линейное масштабирование признаков к диапазону [0, 1].
     function Transform(X: Matrix): Matrix;
@@ -2027,6 +2222,9 @@ type
 /// Примечание:
 ///   • вычисленные параметры НЕ копируются методом Clone
     function Fit(X: Matrix): IUnsupervisedTransformer;
+    
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix): Matrix;
   
     /// Преобразует матрицу X в пространство главных компонент.
     /// Возвращает матрицу m × k.
@@ -2045,7 +2243,7 @@ type
   
 /// Трансформер, удаляющий признаки с малой дисперсией.
 /// Удаляет столбцы X_j, для которых Var(X_j) < threshold.
-/// Не использует целевую переменную (unsupervised)
+/// Не использует целевую переменную.
   VarianceThreshold = class(IUnsupervisedTransformer)
   private
     fThreshold: real;
@@ -2067,6 +2265,9 @@ type
 /// Примечание:
 ///   • выбранные признаки НЕ копируются методом Clone
     function Fit(X: Matrix): IUnsupervisedTransformer;
+    
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix): Matrix;
   
     /// Возвращает матрицу, содержащую только отобранные признаки.
     function Transform(X: Matrix): Matrix;
@@ -2151,6 +2352,9 @@ type
 /// Примечание:
 ///   • выбранные признаки НЕ копируются методом Clone
     function Fit(X: Matrix; y: Vector): ISupervisedTransformer;
+    
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix; y: Vector): Matrix;
   
     /// Возвращает матрицу, содержащую только выбранные признаки.
     function Transform(X: Matrix): Matrix;
@@ -2197,6 +2401,9 @@ type
 /// Примечание:
 ///   • у трансформера отсутствует обученное состояние
     function Fit(X: Matrix): IUnsupervisedTransformer;
+
+    /// Последовательно выполняет Fit и Transform на одних и тех же данных.
+    function FitTransform(X: Matrix): Matrix;
 
 /// Применяет нормализацию к матрице X.
 /// Каждая строка масштабируется так, чтобы ее норма соответствовала выбранному типу.
@@ -2361,6 +2568,18 @@ const
   ER_LOGISTIC_NEED_AT_LEAST_TWO_CLASSES =
     'Для LogisticRegression нужно минимум 2 класса.!!' +
     'LogisticRegression requires at least 2 classes.';
+  ER_LOGISTIC_BOUNDARY_NEEDS_BINARY =
+    'DecisionBoundary доступен только для бинарной LogisticRegression.!!' +
+    'DecisionBoundary is available only for binary LogisticRegression.';
+  ER_LOGISTIC_BOUNDARY_NEEDS_2D =
+    'DecisionBoundary требует ровно 2 признака.!!' +
+    'DecisionBoundary requires exactly 2 features.';
+  ER_LINEAR_REGRESSION_LINE_NEEDS_1D =
+    'RegressionLine требует ровно 1 признак.!!' +
+    'RegressionLine requires exactly 1 feature.';
+  ER_DECISION_BOUNDARY_DEGENERATE =
+    'Разделяющая прямая вырождена: A и B равны нулю.!!' +
+    'Decision boundary is degenerate: A and B are zero.';
   ER_MIN_SAMPLES_SPLIT_INVALID =
     'minSamplesSplit должно быть >= 2 ({0}).!!' +
     'minSamplesSplit must be >= 2 ({0}).';
@@ -2400,14 +2619,19 @@ const
   ER_MODEL_NOT_UNSUPERVISED =
     'Модель (тип: {0}) не является моделью без учителя!!' +
     'Model (type: {0}) is not an unsupervised model';
+  ER_MODEL_NOT_CLUSTERER =
+    'Модель (тип: {0}) не является алгоритмом кластеризации!!' +
+    'Model (type: {0}) is not a clustering algorithm';
   ER_DBSCAN_PREDICT_ONLY_TRAIN_DATA =
     'DBSCAN: Predict поддерживается только для обучающей выборки!!DBSCAN: Predict is only supported for training data';  
   ER_DBSCAN_PREDICT_NEW_DATA =
     'DBSCAN не поддерживает предсказание для новых данных!!DBSCAN does not support prediction for new data';
   ER_CLASSES_NOT_AVAILABLE =
     'Метки классов недоступны. Убедитесь, что модель обучена и метки установлены!!Class labels are not available. Ensure the model is fitted and class labels are set';  
-  ER_PIPELINE_LAST_NOT_SUPERVISED_MODEL = 
-    'Последний шаг Pipeline должен быть supervised-моделью!!' +
+  ER_LABEL_INDEX_OUT_OF_RANGE =
+    'Индекс метки {0} вне диапазона [0, {1})!!Label index {0} is out of range [0, {1})';
+  ER_PIPELINE_LAST_NOT_SUPERVISED_MODEL =
+    'Последний шаг Pipeline должен быть моделью с учителем!!' +
     'Last Pipeline step must be a supervised model';
   ER_INTERNAL_INVALID_MODEL_CLONE =
     'Внутренняя ошибка: Clone модели вернул несовместимый тип!!' +
@@ -2416,6 +2640,9 @@ const
     'Необходимо как минимум два различных класса!!At least two distinct classes are required';  
   ER_UNKNOWN_CLASS_LABEL =
     'Неизвестная метка класса: {0}!!Unknown class label: {0}';
+  ER_CLASS_LABELS_COUNT_MISMATCH =
+    'Число строковых меток классов ({0}) не совпадает с числом классов ({1})!!' +
+    'Class label count ({0}) does not match class count ({1})';
   ER_MAX_FEATURES_INVALID =
     'maxFeatures должен быть >= 0!!maxFeatures must be >= 0';
   ER_OOB_REQUIRES_SUBSAMPLE =
@@ -2426,6 +2653,103 @@ const
 //-----------------------------
 //     Проверка на NuN/Inf
 //-----------------------------
+
+function SingleRowMatrix(X: Vector): Matrix;
+begin
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  Result := new Matrix(1, X.Length);
+
+  for var j := 0 to X.Length - 1 do
+    Result[0, j] := X[j];
+end;
+
+procedure ClassifierLabelHelper.SetClassValues(values: array of integer);
+begin
+  fClassValues := Copy(values);
+  RebuildValueToLabel;
+end;
+
+procedure ClassifierLabelHelper.RebuildValueToLabel;
+begin
+  fValueToLabel := nil;
+
+  if (fClassValues = nil) or (fClassLabels = nil) then
+    exit;
+
+  if fClassValues.Length <> fClassLabels.Length then
+    exit;
+
+  fValueToLabel := new Dictionary<integer, string>;
+  for var i := 0 to fClassValues.Length - 1 do
+    fValueToLabel[fClassValues[i]] := fClassLabels[i];
+end;
+
+procedure ClassifierLabelHelper.BuildDefaultClassLabels;
+begin
+  SetLength(fClassLabels, fClassValues.Length);
+  for var i := 0 to fClassValues.Length - 1 do
+    fClassLabels[i] := fClassValues[i].ToString;
+  RebuildValueToLabel;
+end;
+
+function ClassifierLabelHelper.DecodePredictions(predInternal: array of integer): array of integer;
+begin
+  SetLength(Result, predInternal.Length);
+
+  for var i := 0 to predInternal.Length - 1 do
+  begin
+    var idx := predInternal[i];
+    if (idx < 0) or (idx >= fClassValues.Length) then
+      Error(ER_LABEL_INDEX_OUT_OF_RANGE, idx, fClassValues.Length);
+
+    Result[i] := fClassValues[idx];
+  end;
+end;
+
+function ClassifierLabelHelper.ClassValueAt(idx: integer): integer;
+begin
+  if (idx < 0) or (idx >= fClassValues.Length) then
+    Error(ER_LABEL_INDEX_OUT_OF_RANGE, idx, fClassValues.Length);
+
+  Result := fClassValues[idx];
+end;
+
+function ClassifierLabelHelper.ClassLabelOfValue(value: integer): string;
+begin
+  if fClassLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  if fValueToLabel = nil then
+    RebuildValueToLabel;
+
+  if (fValueToLabel <> nil) and fValueToLabel.TryGetValue(value, Result) then
+    exit;
+
+  for var i := 0 to fClassValues.Length - 1 do
+    if fClassValues[i] = value then
+      exit(fClassLabels[i]);
+
+  ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+end;
+
+procedure ClassifierLabelHelper.SetClassLabels(classes: array of string);
+begin
+  if (fClassValues <> nil) and (classes <> nil) and (classes.Length <> fClassValues.Length) then
+    ArgumentError(ER_CLASS_LABELS_COUNT_MISMATCH, classes.Length, fClassValues.Length);
+
+  fClassLabels := Copy(classes);
+  RebuildValueToLabel;
+end;
+
+function ClassifierLabelHelper.GetClassLabels: array of string;
+begin
+  if fClassLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  Result := Copy(fClassLabels);
+end;
 
 procedure CheckXForFit(X: Matrix);
 begin
@@ -2489,8 +2813,14 @@ begin
   ffitted := false;
 end;
 
-function LinearRegression.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function LinearRegression.Fit(X: Matrix; y: Vector): IRegressor;
 begin
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if y = nil then
+    ArgumentNullError(ER_Y_NULL);
+
   if MLConfig.ValidateFiniteInputs then
   begin
     CheckXForFit(X);
@@ -2547,6 +2877,11 @@ begin
     DimensionError(ER_DIM_MISMATCH, X.ColCount, fCoef.Length);
 
   Result := X * fcoef + fIntercept;
+end;
+
+function LinearRegression.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
 end;
 
 function LinearRegression.ToString: string;
@@ -2614,8 +2949,14 @@ begin
   fFitted := false;
 end;
 
-function RidgeRegression.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function RidgeRegression.Fit(X: Matrix; y: Vector): IRegressor;
 begin
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if y = nil then
+    ArgumentNullError(ER_Y_NULL);
+
   if MLConfig.ValidateFiniteInputs then
   begin
     CheckXForFit(X);
@@ -2676,6 +3017,11 @@ begin
     Result[i] += fIntercept;
 end;
 
+function RidgeRegression.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
 function RidgeRegression.ToString: string;
 begin
   Result := 'RidgeRegression(lambda=' + fLambda + ')';
@@ -2719,7 +3065,7 @@ begin
     exit(0.0);
 end;
 
-function ElasticNet.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function ElasticNet.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -2865,6 +3211,11 @@ begin
     Result[i] += fIntercept;
 end;
 
+function ElasticNet.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
 function ElasticNet.ToString: string;
 begin
   Result :=
@@ -2893,7 +3244,7 @@ begin
   fModel := new ElasticNet(fAlpha, 0.0, fMaxIter, fTol);
 end;
 
-function LassoRegression.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function LassoRegression.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   fModel.Fit(X, y);
   Result := Self;
@@ -2902,6 +3253,11 @@ end;
 function LassoRegression.Predict(X: Matrix): Vector;
 begin
   Result := fModel.Predict(X);
+end;
+
+function LassoRegression.PredictOne(X: Vector): real;
+begin
+  Result := fModel.PredictOne(X);
 end;
 
 function LassoRegression.Clone: IModel;
@@ -2928,7 +3284,7 @@ end;
 //-----------------------------
 
 constructor LogisticRegression.Create(lambda: real; learningRate: real; epochs: integer;
-  tol: real; checkConvergence: boolean; minImprovement: real; useFastExp: boolean);
+  tol: real; checkConvergence: boolean; minImprovement: real);
 begin
   fLambda := lambda;
   fLearningRate := learningRate;
@@ -2937,20 +3293,11 @@ begin
   fTol := tol;
   fCheckConvergence := checkConvergence;
   fMinImprovement := minImprovement;
-  fUseFastExp := useFastExp
-end;
-
-function FastExp(x: real): real;
-begin
-  if x < -5 then exit(0.0);
-  if x > 5 then x := 5;
-
-  Result := 1.0 + x + 0.5*x*x + (1.0/6.0)*x*x*x;
 end;
 
 type RealArr = array of real;
 
-function LogisticRegression.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function LogisticRegression.Fit(X: Matrix; y: array of integer): IClassifier;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -2959,10 +3306,7 @@ begin
     ArgumentNullError(ER_Y_NULL);
 
   if MLConfig.ValidateFiniteInputs then
-  begin
     CheckXForFit(X);
-    CheckYForFit(y);
-  end;
 
   if X.RowCount = 0 then
     ArgumentError(ER_EMPTY_DATASET);
@@ -2986,7 +3330,7 @@ begin
   var p := X.ColCount;
 
   // --- convert to integer labels
-  var yInt := LabelsToInts(y);
+  var yInt := Copy(y);
   
   // --- encode (порядок первого появления)
   var unique: array of integer;
@@ -3006,10 +3350,11 @@ begin
     fClassToIndex[unique[i]] := i;
     fIndexToClass[i] := unique[i];
   end;
-  
-  SetLength(fClassLabels, fIndexToClass.Length);
-  for var i := 0 to fIndexToClass.Length - 1 do
-    fClassLabels[i] := fIndexToClass[i].ToString;
+
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassValues(fIndexToClass);
+  fLabels.BuildDefaultClassLabels;
 
   // --- init
   fW := new Matrix(p, fClassCount);
@@ -3066,11 +3411,7 @@ begin
       var sumExp := 0.0;
       for var k := 0 to fClassCount - 1 do
       begin
-        var v: real;
-        if fUseFastExp then
-          v := FastExp(zi[k] - maxVal)
-        else  
-          v := Exp(zi[k] - maxVal);
+        var v := Exp(zi[k] - maxVal);
         zi[k] := v;
         sumExp += v;
       end;
@@ -3106,7 +3447,10 @@ begin
   
         var gwk := gradW[k];
         for var j := 0 to p - 1 do
-          gwk[j] += xi[j] * diff;
+        begin
+          var xij := xi[j];
+          gwk[j] += xij * diff;
+        end;
       end;
     end;
   
@@ -3172,7 +3516,6 @@ begin
   if MLConfig.ValidateFiniteInputs then
   begin
     CheckXForFit(X);
-    CheckYForFit(y);
   end;
 
   if X.RowCount = 0 then
@@ -3394,34 +3737,78 @@ begin
   Result := Z;
 end;
 
-function LogisticRegression.GetClasses: array of real;
+function LogisticRegression.PredictProbaOne(X: Vector): Vector;
 begin
-  SetLength(Result, fClassCount);
-  for var i := 0 to fClassCount - 1 do
-    Result[i] := fIndexToClass[i];
+  Result := PredictProba(SingleRowMatrix(X)).GetRow(0);
 end;
 
-function LogisticRegression.Predict(X: Matrix): Vector;
+function LogisticRegression.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
 
-  var labels := PredictLabels(X);
-  
-  Result := new Vector(labels.Length);
-  
-  for var i := 0 to labels.Length - 1 do
-    Result[i] := fIndexToClass[labels[i]];
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if MLConfig.ValidateFiniteInputs then
+    CheckXForPredict(X);
+
+  if X.ColCount <> fW.RowCount then
+    DimensionError(ER_FEATURE_COUNT_MISMATCH, X.ColCount, fW.RowCount);
+
+  var m := X.RowCount;
+  var Z := X * fW;
+
+  SetLength(Result, m);
+
+  for var i := 0 to m - 1 do
+  begin
+    var best := 0;
+    var bestVal := Z[i,0] + fIntercept[0];
+
+    for var k := 1 to fClassCount - 1 do
+    begin
+      var score := Z[i,k] + fIntercept[k];
+      if score > bestVal then
+      begin
+        bestVal := score;
+        best := k;
+      end;
+    end;
+
+    Result[i] := fLabels.ClassValueAt(best);
+  end;
 end;
 
-function LogisticRegression.PredictLabels(X: Matrix): array of integer;
+function LogisticRegression.PredictOne(X: Vector): integer;
 begin
-  var P := PredictProba(X);
-  
-  SetLength(Result, P.RowCount);
-  
-  for var i := 0 to P.RowCount - 1 do
-    Result[i] := P.RowArgMax(i);
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function LogisticRegression.PredictLabels(X: Matrix): array of string;
+begin
+  var pred := Predict(X);
+
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  SetLength(Result, pred.Length);
+  for var i := 0 to pred.Length - 1 do
+    Result[i] := fLabels.ClassLabelOfValue(pred[i]);
+end;
+
+procedure LogisticRegression.SetClassLabels(classes: array of string);
+begin
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassLabels(classes);
+end;
+
+function LogisticRegression.GetClassLabels: array of string;
+begin
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  Result := fLabels.GetClassLabels;
 end;
 
 function LogisticRegression.ToString: string;
@@ -3440,8 +3827,7 @@ begin
     fEpochs,
     fTol,
     fCheckConvergence,
-    fMinImprovement,
-    fUseFastExp
+    fMinImprovement
   );
 end;
 
@@ -3461,17 +3847,136 @@ begin
   Result := fIntercept;
 end;
 
-procedure LogisticRegression.SetClassLabels(classes: array of string);
+function LinearDecisionBoundary.Evaluate(x, y: real): real;
 begin
-  fClassLabels := Copy(classes);
+  Result := A * x + B * y + C;
 end;
 
-function LogisticRegression.GetClassLabels: array of string;
+function LinearDecisionBoundary.Y(x: real): real;
 begin
-  if fClassLabels = nil then
-    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  if Abs(B) < 1e-12 then
+    Result := real.PositiveInfinity
+  else
+    Result := -(A * x + C) / B;
+end;
 
-  Result := Copy(fClassLabels);
+function LinearDecisionBoundary.Side(x, y: real): integer;
+begin
+  var v := Evaluate(x, y);
+  if Abs(v) < 1e-12 then
+    Result := 0
+  else if v < 0 then
+    Result := -1
+  else
+    Result := 1;
+end;
+
+function LinearDecisionBoundary.Distance(x, y: real): real;
+begin
+  var denom := Sqrt(A * A + B * B);
+  if denom < 1e-12 then
+    Error(ER_DECISION_BOUNDARY_DEGENERATE);
+  Result := Abs(Evaluate(x, y)) / denom;
+end;
+
+function LinearDecisionBoundary.ToString: string;
+  function FormatCoeff(v: real): string;
+  begin
+    if Abs(v - Round(v)) < 1e-12 then
+      Result := Round(v).ToString
+    else
+      Result := v.ToString('0.##');
+  end;
+  function FmtSigned(v: real; suffix: string): string;
+  begin
+    if Abs(v) < 1e-12 then
+      exit('');
+
+    var mag := FormatCoeff(Abs(v));
+    if suffix <> '' then
+      mag += '*' + suffix;
+
+    if v < 0 then
+      Result := ' - ' + mag
+    else
+      Result := ' + ' + mag;
+  end;
+begin
+  Result := '';
+
+  if Abs(A) >= 1e-12 then
+    Result := FormatCoeff(A) + '*x';
+
+  Result += FmtSigned(B, 'y');
+  Result += FmtSigned(C, '');
+
+  if Result = '' then
+    Result := '0';
+
+  if Result.StartsWith(' + ') then
+    Result := Result.Substring(3);
+  if Result.StartsWith(' - ') then
+    Result := '-' + Result.Substring(3);
+
+  Result += ' = 0';
+end;
+
+function LinearRegressionLine.Evaluate(x: real): real;
+begin
+  Result := K * x + B;
+end;
+
+function LinearRegressionLine.Y(x: real): real;
+begin
+  Result := Evaluate(x);
+end;
+
+function LinearRegressionLine.ToString: string;
+  function FormatCoeff(v: real): string;
+  begin
+    if Abs(v - Round(v)) < 1e-12 then
+      Result := Round(v).ToString
+    else
+      Result := v.ToString('0.##');
+  end;
+begin
+  Result := FormatCoeff(K) + '*x';
+
+  if B > 1e-12 then
+    Result += ' + ' + FormatCoeff(B)
+  else if B < -1e-12 then
+    Result += ' - ' + FormatCoeff(Abs(B));
+end;
+
+function LinearRegression.RegressionLine: LinearRegressionLine;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if (fCoef = nil) or (fCoef.Length <> 1) then
+    ArgumentError(ER_LINEAR_REGRESSION_LINE_NEEDS_1D);
+
+  Result.K := fCoef[0];
+  Result.B := fIntercept;
+end;
+
+function LogisticRegression.DecisionBoundary: LinearDecisionBoundary;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if fClassCount <> 2 then
+    ArgumentError(ER_LOGISTIC_BOUNDARY_NEEDS_BINARY);
+
+  if fW.RowCount <> 2 then
+    ArgumentError(ER_LOGISTIC_BOUNDARY_NEEDS_2D);
+
+  Result.A := fW[0,0] - fW[0,1];
+  Result.B := fW[1,0] - fW[1,1];
+  Result.C := fIntercept[0] - fIntercept[1];
+
+  if (Abs(Result.A) < 1e-12) and (Abs(Result.B) < 1e-12) then
+    Error(ER_DECISION_BOUNDARY_DEGENERATE);
 end;
 
 function GiniCriterion.Impurity(y: Vector; indices: array of integer): real;
@@ -3609,6 +4114,113 @@ begin
   Result := n;
 end;
 
+constructor DecisionTreeView.Create(
+  root: DecisionTreeNode;
+  featureNames: array of string;
+  classNames: array of string
+);
+begin
+  if root <> nil then
+    fRoot := root.Clone;
+  fFeatureNames := Copy(featureNames);
+  fClassNames := Copy(classNames);
+end;
+
+function DecisionTreeView.ToString: string;
+  function FormatReal(v: real): string;
+  begin
+    if Abs(v - Round(v)) < 1e-12 then
+      Result := Round(v).ToString
+    else
+      Result := v.ToString('0.##');
+  end;
+
+  function FeatureNameOf(idx: integer): string;
+  begin
+    if (idx >= 0) and (idx < fFeatureNames.Length) and (fFeatureNames[idx] <> nil) and (fFeatureNames[idx] <> '') then
+      Result := fFeatureNames[idx]
+    else
+      Result := 'x' + idx;
+  end;
+
+  function ClassNameOf(idx: integer): string;
+  begin
+    if (idx >= 0) and (idx < fClassNames.Length) then
+      Result := fClassNames[idx]
+    else
+      Result := idx.ToString;
+  end;
+
+  function LeafText(node: DecisionTreeNode): string;
+  begin
+    if node = nil then
+      exit('nil');
+
+    if fClassNames <> nil then
+      Result := ClassNameOf(Round(node.LeafValue))
+    else
+      Result := FormatReal(node.LeafValue);
+  end;
+
+  procedure AppendBranch(sb: System.Text.StringBuilder; node: DecisionTreeNode;
+    prefix: string; isLast: boolean; branchMark: string);
+  begin
+    sb.Append(prefix);
+
+    if isLast then
+      sb.Append('└── ')
+    else
+      sb.Append('├── ');
+
+    if node = nil then
+    begin
+      sb.Append(branchMark + ': nil');
+      sb.AppendLine;
+      exit;
+    end;
+
+    if node.IsLeaf then
+    begin
+      sb.Append(branchMark + ': ' + LeafText(node));
+      sb.AppendLine;
+      exit;
+    end;
+
+    sb.Append(branchMark + ': ');
+    sb.Append(FeatureNameOf(node.FeatureIndex));
+    sb.Append(' ≤ ');
+    sb.Append(FormatReal(node.Threshold));
+    sb.Append('?');
+    sb.AppendLine;
+
+    var childPrefix := prefix;
+    if isLast then
+      childPrefix += '    '
+    else
+      childPrefix += '│   ';
+
+    AppendBranch(sb, node.Left, childPrefix, false, 'да');
+    AppendBranch(sb, node.Right, childPrefix, true, 'нет');
+  end;
+begin
+  if fRoot = nil then
+    exit('DecisionTreeView(empty)');
+
+  if fRoot.IsLeaf then
+    exit('→ ' + LeafText(fRoot));
+
+  var sb := new System.Text.StringBuilder;
+  sb.Append(FeatureNameOf(fRoot.FeatureIndex));
+  sb.Append(' ≤ ');
+  sb.Append(FormatReal(fRoot.Threshold));
+  sb.Append('?');
+  sb.AppendLine;
+
+  AppendBranch(sb, fRoot.Left, '', false, 'да');
+  AppendBranch(sb, fRoot.Right, '', true, 'нет');
+  Result := sb.ToString.TrimEnd;
+end;
+
 const MAX_ALLOWED_TREE_DEPTH = 1000;
 
 // DecisionTreeCore
@@ -3639,7 +4251,19 @@ begin
   if fRoot = nil then
     NotFittedError(ER_FIT_NOT_CALLED);
 
-  Result := fFeatureImportances.Normalized;
+  Result := fFeatureImportances.Clone;
+
+  var sum := 0.0;
+  for var i := 0 to Result.Length - 1 do
+  begin
+    if Result[i] < 0.0 then
+      ArgumentError(ER_INVALID_VALUE_AT, 'FeatureImportances', i);
+    sum += Result[i];
+  end;
+
+  if sum > 0.0 then
+    for var i := 0 to Result.Length - 1 do
+      Result[i] /= sum;
 end;
 
 procedure DecisionTreeCore.Fit(X: Matrix; y: Vector);
@@ -3671,18 +4295,17 @@ begin
       fFeatureImportances[i] /= s;
 end;
 
-function DecisionTreeCore.Predict(X: Matrix): Vector;
+function DecisionTreeCore.Predict(X: Matrix): array of integer;
 begin
-  Result := new Vector(X.RowCount);
+  SetLength(Result, X.RowCount);
 
   for var i := 0 to X.RowCount - 1 do
     Result[i] := PredictOne(X.GetRow(i), fRoot);
 end;
 
 function DecisionTreeCore.PredictRow(X: Matrix; row: integer): integer;
-var node: DecisionTreeNode;
 begin
-  node := fRoot;
+  var node := fRoot;
 
   while not node.IsLeaf do
   begin
@@ -3704,6 +4327,13 @@ begin
     Result := PredictOne(x, node.Left)
   else
     Result := PredictOne(x, node.Right);
+end;
+
+function DecisionTreeCore.RootNode: DecisionTreeNode;
+begin
+  if fRoot = nil then
+    NotFittedError(ER_FIT_NOT_CALLED);
+  Result := fRoot.Clone;
 end;
 
 function DecisionTreeCore.MajorityClass(y: Vector; indices: array of integer): integer;
@@ -4074,8 +4704,8 @@ begin
 
   var leftOrders, rightOrders: array of array of integer;
   SplitNodeOrders(nodeOrders, split.Feature, split.LeftCount, split.LeftOrderSize, leftOrders, rightOrders);
-  var leftArr := leftOrders[0];
-  var rightArr := rightOrders[0];
+  //var leftArr := leftOrders[0];
+  //var rightArr := rightOrders[0];
   var rightCount := n - split.LeftCount;
 
   if (split.LeftCount < fMinSamplesLeaf) or
@@ -4141,10 +4771,45 @@ begin
   var maxLeftCount := n - minLeaf;
 
   var features := GetFeatureSubset(X.ColCount);
+  var featureLimit := features.Length;
+  var fj := 0;
   
-  for var fj := 0 to features.Length - 1 do
+  while fj < X.ColCount do
   begin
+    // Проверяем выбранное подмножество целиком. Если в нём нет
+    // допустимого разбиения, пробуем остальные признаки до первого
+    // допустимого разбиения, не превращая узел в лист преждевременно.
+    if (fj >= featureLimit) and (bestFeature <> -1) then
+      break;
+
+    if fj = features.Length then
+    begin
+      var selected := new boolean[X.ColCount];
+      foreach var feature in features do
+        selected[feature] := true;
+
+      SetLength(features, X.ColCount);
+      var nextFeature := featureLimit;
+      for var feature := 0 to X.ColCount - 1 do
+        if not selected[feature] then
+        begin
+          features[nextFeature] := feature;
+          nextFeature += 1;
+        end;
+
+      // Дополнительные признаки тоже проверяем в случайном порядке.
+      // RNG используется только при необходимости продолжить поиск.
+      for var k := featureLimit to features.Length - 2 do
+      begin
+        var r := k + fRng.Next(features.Length - k);
+        var tmp := features[k];
+        features[k] := features[r];
+        features[r] := tmp;
+      end;
+    end;
+
     var j := features[fj];
+    fj += 1;
     var order := nodeOrders[j];
     var orderLen := order.Length;
     
@@ -4593,7 +5258,7 @@ begin
   fRng := new System.Random(fRandomSeed);
 end;
 
-function DecisionTreeClassifier.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function DecisionTreeClassifier.Fit(X: Matrix; y: array of integer): IClassifier;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -4604,7 +5269,6 @@ begin
   if MLConfig.ValidateFiniteInputs then
   begin
     CheckXForFit(X);
-    CheckYForFit(y);
   end;
 
   if X.RowCount = 0 then
@@ -4615,12 +5279,9 @@ begin
 
   fFeatureImportances := new Vector(X.ColCount);
 
-  // --- convert to integer labels
-  var yInt := LabelsToInts(y);
-
   // --- encode
   var classes: array of integer;
-  var yEncArr := EncodeLabelsInt(yInt, classes);
+  var yEncArr := EncodeLabelsInt(y, classes);
   
   if classes.Length < 2 then
     ArgumentError(ER_NEED_AT_LEAST_TWO_CLASSES);
@@ -4630,9 +5291,10 @@ begin
     fCriterion := new GiniCriterion(classes.Length);
 
   fIndexToClass := classes;
-  SetLength(fClassLabels, fIndexToClass.Length);
-  for var i := 0 to fIndexToClass.Length - 1 do
-    fClassLabels[i] := fIndexToClass[i].ToString;
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassValues(fIndexToClass);
+  fLabels.BuildDefaultClassLabels;
 
   // --- encoded vector
   var yEncoded := new Vector(yEncArr);
@@ -4654,17 +5316,7 @@ begin
   Result := Self;
 end;
 
-function DecisionTreeClassifier.Predict(X: Matrix): Vector;
-begin
-  var labels := PredictLabels(X);
-  
-  Result := new Vector(labels.Length);
-  
-  for var i := 0 to labels.Length - 1 do
-    Result[i] := fIndexToClass[labels[i]];
-end;
-
-function DecisionTreeClassifier.PredictLabels(X: Matrix): array of integer;
+function DecisionTreeClassifier.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -4678,12 +5330,54 @@ begin
   if X.ColCount <> fFeatureImportances.Length then
     DimensionError(ER_FEATURE_COUNT_MISMATCH, X.ColCount, fFeatureImportances.Length);
   
-  var predIdx := fCore.Predict(X);
-  
-  Result := new integer[predIdx.Length];
-  
-  for var i := 0 to predIdx.Length - 1 do
-    Result[i] := Round(predIdx[i]);
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  Result := fLabels.DecodePredictions(fCore.Predict(X));
+end;
+
+function DecisionTreeClassifier.PredictOne(X: Vector): integer;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function DecisionTreeClassifier.PredictLabels(X: Matrix): array of string;
+begin
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  var pred := Predict(X);
+  SetLength(Result, pred.Length);
+  for var i := 0 to pred.Length - 1 do
+    Result[i] := fLabels.ClassLabelOfValue(pred[i]);
+end;
+
+procedure DecisionTreeClassifier.SetClassLabels(classes: array of string);
+begin
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassLabels(classes);
+end;
+
+function DecisionTreeClassifier.GetClassLabels: array of string;
+begin
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  Result := fLabels.GetClassLabels;
+end;
+
+function DecisionTreeClassifier.Tree(
+  featureNames: array of string;
+  classNames: array of string
+): DecisionTreeView;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  Result := new DecisionTreeView(
+    fCore.RootNode,
+    featureNames,
+    classNames
+  );
 end;
 
 function DecisionTreeClassifier.Clone: IModel;
@@ -4706,19 +5400,6 @@ begin
     $'minSamplesSplit={fMinSamplesSplit}, ' +
     $'minSamplesLeaf={fMinSamplesLeaf}' +
     ')';
-end;
-
-procedure DecisionTreeClassifier.SetClassLabels(classes: array of string);
-begin
-  fClassLabels := Copy(classes);
-end;
-
-function DecisionTreeClassifier.GetClassLabels: array of string;
-begin
-  if fClassLabels = nil then
-    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
-
-  Result := Copy(fClassLabels);
 end;
 
 // DecisionTreeRegressor
@@ -4784,7 +5465,7 @@ begin
   Result := true;
 end;
 
-function DecisionTreeRegressor.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function DecisionTreeRegressor.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -4873,6 +5554,26 @@ begin
 
   for var i := 0 to n - 1 do
     Result[i] := PredictOne(X, i);
+end;
+
+function DecisionTreeRegressor.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function DecisionTreeRegressor.Tree(
+  featureNames: array of string;
+  classNames: array of string
+): DecisionTreeView;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  Result := new DecisionTreeView(
+    fRoot,
+    featureNames,
+    nil
+  );
 end;
 
 function DecisionTreeRegressor.Clone: IModel;
@@ -4985,7 +5686,7 @@ begin
   inherited Create(nTrees,maxDepth,minSamplesSplit,minSamplesLeaf,maxFeaturesMode,computeOOB,seed)
 end;
 
-function RandomForestRegressor.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function RandomForestRegressor.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -5136,6 +5837,11 @@ begin
   Result := resultVec;
 end;
 
+function RandomForestRegressor.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
 function RandomForestRegressor.Clone: IModel;
 begin
   Result := new RandomForestRegressor(
@@ -5199,19 +5905,13 @@ begin
   inherited Create(nTrees,maxDepth,minSamplesSplit,minSamplesLeaf,maxFeaturesMode,computeOOB,seed);
 end;
 
-function RandomForestClassifier.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function RandomForestClassifier.Fit(X: Matrix; y: array of integer): IClassifier;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
 
-  if y = nil then
-    ArgumentNullError(ER_Y_NULL);
-
   if MLConfig.ValidateFiniteInputs then
-  begin
     CheckXForFit(X);
-    CheckYForFit(y);
-  end;
 
   if X.RowCount = 0 then
     ArgumentError(ER_EMPTY_DATASET);
@@ -5233,14 +5933,13 @@ begin
   // ЕДИНЫЙ ENCODING (forest-level)
   // =========================================================
 
-  var yInt := LabelsToInts(y);
-
-  var yEncArr := EncodeLabelsInt(yInt, fIndexToClass);
+  var yEncArr := EncodeLabelsInt(y, fIndexToClass);
   fClassCount := fIndexToClass.Length;
-  
-  SetLength(fClassLabels, fIndexToClass.Length);
-  for var i := 0 to fIndexToClass.Length - 1 do
-    fClassLabels[i] := fIndexToClass[i].ToString;
+
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassValues(fIndexToClass);
+  fLabels.BuildDefaultClassLabels;
 
   if fClassCount < 2 then
     ArgumentError(ER_NEED_AT_LEAST_TWO_CLASSES);
@@ -5342,17 +6041,7 @@ begin
   Result := Self;
 end;
 
-function RandomForestClassifier.Predict(X: Matrix): Vector;
-begin
-  var labels := PredictLabels(X);
-  
-  Result := new Vector(labels.Length);
-  
-  for var i := 0 to labels.Length - 1 do
-    Result[i] := fIndexToClass[labels[i]];
-end;
-
-function RandomForestClassifier.PredictLabels(X: Matrix): array of integer;
+function RandomForestClassifier.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -5403,8 +6092,20 @@ begin
         bestClass := c;
       end;
 
-    Result[i] := bestClass;
+    Result[i] := fLabels.ClassValueAt(bestClass);
   end;
+end;
+
+function RandomForestClassifier.PredictLabels(X: Matrix): array of string;
+begin
+  var pred := Predict(X);
+
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  SetLength(Result, pred.Length);
+  for var i := 0 to pred.Length - 1 do
+    Result[i] := fLabels.ClassLabelOfValue(pred[i]);
 end;
 
 function RandomForestClassifier.PredictProba(X: Matrix): Matrix;
@@ -5456,6 +6157,11 @@ begin
   end;
 end;
 
+function RandomForestClassifier.PredictProbaOne(X: Vector): Vector;
+begin
+  Result := PredictProba(SingleRowMatrix(X)).GetRow(0);
+end;
+
 function RandomForestClassifier.Clone: IModel;
 begin
   Result := new RandomForestClassifier(
@@ -5485,7 +6191,19 @@ begin
 
   resultVec *= 1.0 / fTrees.Length;
 
-  Result := resultVec.Normalized;
+  Result := resultVec;
+
+  var sum := 0.0;
+  for var i := 0 to Result.Length - 1 do
+  begin
+    if Result[i] < 0.0 then
+      ArgumentError(ER_INVALID_VALUE_AT, 'FeatureImportances', i);
+    sum += Result[i];
+  end;
+
+  if sum > 0.0 then
+    for var i := 0 to Result.Length - 1 do
+      Result[i] /= sum;
 end;
 
 function RandomForestClassifier.ToString: string;
@@ -5511,25 +6229,18 @@ begin
     ')';
 end;
 
-function RandomForestClassifier.GetClasses: array of real;
-begin
-  Result := new real[fClassCount];
-
-  for var i := 0 to fClassCount - 1 do
-    Result[i] := fIndexToClass[i];
-end;
-
 procedure RandomForestClassifier.SetClassLabels(classes: array of string);
 begin
-  fClassLabels := Copy(classes);
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassLabels(classes);
 end;
 
 function RandomForestClassifier.GetClassLabels: array of string;
 begin
-  if fClassLabels = nil then
+  if fLabels = nil then
     ArgumentError(ER_CLASSES_NOT_AVAILABLE);
-
-  Result := Copy(fClassLabels);
+  Result := fLabels.GetClassLabels;
 end;
 
 //-----------------------------
@@ -5825,14 +6536,14 @@ end;
 
 const MinImprovement = 1e-12;
 
-function GradientBoostingRegressor.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function GradientBoostingRegressor.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   Result := FitInternal(X, y, nil, nil, false);
 end;
 
 function GradientBoostingRegressor.FitWithValidation(
   XTrain: Matrix; yTrain: Vector;
-  XVal: Matrix; yVal: Vector): ISupervisedModel;
+  XVal: Matrix; yVal: Vector): IRegressor;
 begin
   Result := FitInternal(XTrain, yTrain, XVal, yVal, true);
 end;
@@ -5840,7 +6551,7 @@ end;
 function GradientBoostingRegressor.FitInternal(
   XTrain: Matrix; yTrain: Vector;
   XVal: Matrix; yVal: Vector;
-  useValidation: boolean): ISupervisedModel;
+  useValidation: boolean): IRegressor;
 begin
   // --- null checks ---
   if XTrain = nil then
@@ -6016,6 +6727,7 @@ begin
     begin
       var mask := new boolean[nTrain];
       var yPredOOB := new Vector(nTrain);
+      var stageCount := m + 1;
 
       var cnt := 0;
 
@@ -6025,7 +6737,7 @@ begin
         begin
           mask[i] := true;
           yPredOOB[i] :=
-              fInitValue + oobSum[i] / oobCount[i];
+              fInitValue + oobSum[i] * stageCount / oobCount[i];
           cnt += 1;
         end
         else
@@ -6105,13 +6817,15 @@ begin
     yPred[i] := fInitValue;
 
   foreach var tree in fEstimators do
-  begin
-    var delta := tree.Predict(X);
     for var i := 0 to n - 1 do
-      yPred[i] += fLearningRate * delta[i];
-  end;
+      yPred[i] += fLearningRate * tree.PredictOne(X, i);
 
   Result := yPred;
+end;
+
+function GradientBoostingRegressor.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
 end;
 
 function GradientBoostingRegressor.PredictStage(X: Matrix; m: integer): Vector;
@@ -6305,9 +7019,9 @@ end;
 //-----------------------------
 
 function GradientBoostingClassifier.FitInternal(
-  XTrain: Matrix; yTrain: Vector;
-  XVal: Matrix; yVal: Vector;
-  useValidation: boolean): ISupervisedModel;
+  XTrain: Matrix; yTrain: array of integer;
+  XVal: Matrix; yVal: array of integer;
+  useValidation: boolean): IClassifier;
 begin
   // --- null checks ---
   if XTrain = nil then
@@ -6318,10 +7032,7 @@ begin
 
   // --- finite checks ---
   if MLConfig.ValidateFiniteInputs then
-  begin
     CheckXForFit(XTrain);
-    CheckYForFit(yTrain);
-  end;
 
   // --- shape checks ---
   if XTrain.RowCount = 0 then
@@ -6339,10 +7050,7 @@ begin
       ArgumentNullError(ER_Y_NULL);
 
     if MLConfig.ValidateFiniteInputs then
-    begin
       CheckXForPredict(XVal);
-      CheckYForFit(yVal);
-    end;
 
     if XVal.RowCount <> yVal.Length then
       DimensionError(ER_XY_SIZE_MISMATCH,XVal.RowCount,yVal.Length);
@@ -6368,15 +7076,14 @@ begin
   // Новый Encoding
   // =========================================================
 
-  var yTrainInt := LabelsToInts(yTrain);
-
-  var yEncoded := EncodeLabelsInt(yTrainInt, fClasses);
+  var yEncoded := EncodeLabelsInt(yTrain, fClasses);
 
   fClassCount := fClasses.Length;
-  
-  SetLength(fClassLabels, fClasses.Length);
-  for var i := 0 to fClasses.Length - 1 do
-    fClassLabels[i] := fClasses[i].ToString;
+
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassValues(fClasses);
+  fLabels.BuildDefaultClassLabels;
 
   if fClassCount < 2 then
     ArgumentError(ER_NEED_AT_LEAST_TWO_CLASSES);
@@ -6569,18 +7276,26 @@ begin
     else if useOOB then
     begin
       var mask := new boolean[nTrain];
+      var scaledLogits := new Matrix(nTrain, classCount);
+      var stageCount := iter + 1;
       var cnt := 0;
 
       for var i := 0 to nTrain - 1 do
       begin
         mask[i] := oobCount[i] > 0;
         if mask[i] then
+        begin
+          var scale := stageCount / oobCount[i];
+          for var cls := 0 to classCount - 1 do
+            scaledLogits[i, cls] :=
+              fInitLogits[cls] + (logitsOOB[i, cls] - fInitLogits[cls]) * scale;
           cnt += 1;
+        end;
       end;
 
       if cnt >= Max(1, nTrain div 10) then
       begin
-        scoreLoss := ComputeLogLossMasked(yEncoded, logitsOOB, mask);
+        scoreLoss := ComputeLogLossMasked(yEncoded, scaledLogits, mask);
         fOOBLossHistory.Add(scoreLoss);
       end
       else
@@ -6611,6 +7326,10 @@ begin
       fEstimators.RemoveRange(keep, fEstimators.Count - keep);
     if fOOBLossHistory.Count > keep then
       fOOBLossHistory.RemoveRange(keep, fOOBLossHistory.Count - keep);
+    if fTrainLossHistory.Count > keep then
+      fTrainLossHistory.RemoveRange(keep, fTrainLossHistory.Count - keep);
+    if fValLossHistory.Count > keep then
+      fValLossHistory.RemoveRange(keep, fValLossHistory.Count - keep);
   end;
 
   fFitted := true;
@@ -6912,12 +7631,8 @@ begin
   // --- накопление логитов
   foreach var trees in fEstimators do
     for var cls := 0 to classCount - 1 do
-    begin
-      var delta := trees[cls].Predict(X);
-
       for var i := 0 to nSamples - 1 do
-        logits[i, cls] += fLearningRate * delta[i];
-    end;
+        logits[i, cls] += fLearningRate * trees[cls].PredictOne(X, i);
 
   var probs := new Matrix(nSamples, classCount);
 
@@ -6954,11 +7669,9 @@ begin
   Result := probs;
 end;
 
-function GradientBoostingClassifier.GetClasses: array of real;
+function GradientBoostingClassifier.PredictProbaOne(X: Vector): Vector;
 begin
-  SetLength(Result, fClassCount);
-  for var i := 0 to fClassCount - 1 do
-    Result[i] := fClasses[i];
+  Result := PredictProba(SingleRowMatrix(X)).GetRow(0);
 end;
 
 function GradientBoostingClassifier.PredictStageProba(
@@ -7011,12 +7724,15 @@ begin
   Result := probs;
 end;
 
-function GradientBoostingClassifier.PredictStage(X: Matrix; m: integer): Vector;
+function GradientBoostingClassifier.PredictStage(X: Matrix; m: integer): array of integer;
 begin
   var probs := PredictStageProba(X, m);
 
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
   var n := probs.RowCount;
-  var resultVec := new Vector(n);
+  SetLength(Result, n);
 
   for var i := 0 to n - 1 do
   begin
@@ -7030,10 +7746,8 @@ begin
         best := cls;
       end;
 
-    resultVec[i] := fClasses[best];
+    Result[i] := fLabels.ClassValueAt(best);
   end;
-
-  Result := resultVec;
 end;
 
 function GradientBoostingClassifier.FeatureImportances: Vector;
@@ -7104,52 +7818,60 @@ begin
   );
 end;
 
-function GradientBoostingClassifier.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function GradientBoostingClassifier.Fit(X: Matrix; y: array of integer): IClassifier;
 begin
   Result := FitInternal(X, y, nil, nil, false);
 end;
 
 function GradientBoostingClassifier.FitWithValidation(
-  XTrain: Matrix; yTrain: Vector;
-  XVal: Matrix; yVal: Vector): ISupervisedModel;
+  XTrain: Matrix; yTrain: array of integer;
+  XVal: Matrix; yVal: array of integer): IClassifier;
 begin
   Result := FitInternal(XTrain, yTrain, XVal, yVal, true);
 end;
 
-function GradientBoostingClassifier.Predict(X: Matrix): Vector;
+function GradientBoostingClassifier.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
 
-  var labels := PredictLabels(X);
-  
-  Result := new Vector(labels.Length);
-  
-  for var i := 0 to labels.Length - 1 do
-    Result[i] := fClasses[labels[i]];
-end;
-
-function GradientBoostingClassifier.PredictLabels(X: Matrix): array of integer;
-begin
   var probs := PredictProba(X);
   
   SetLength(Result, probs.RowCount);
   
   for var i := 0 to probs.RowCount - 1 do
-    Result[i] := probs.RowArgMax(i);
+    Result[i] := fLabels.ClassValueAt(probs.RowArgMax(i));
+end;
+
+function GradientBoostingClassifier.PredictOne(X: Vector): integer;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function GradientBoostingClassifier.PredictLabels(X: Matrix): array of string;
+begin
+  var pred := Predict(X);
+
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  SetLength(Result, pred.Length);
+  for var i := 0 to pred.Length - 1 do
+    Result[i] := fLabels.ClassLabelOfValue(pred[i]);
 end;
 
 procedure GradientBoostingClassifier.SetClassLabels(classes: array of string);
 begin
-  fClassLabels := Copy(classes);
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassLabels(classes);
 end;
 
 function GradientBoostingClassifier.GetClassLabels: array of string;
 begin
-  if fClassLabels = nil then
+  if fLabels = nil then
     ArgumentError(ER_CLASSES_NOT_AVAILABLE);
-
-  Result := Copy(fClassLabels);
+  Result := fLabels.GetClassLabels;
 end;
 
 //-----------------------------
@@ -7166,6 +7888,25 @@ begin
   fFitted := False;
 end;
 
+function KNNBase.GetNearestNeighbors(X: Vector): array of NeighborInfo;
+begin
+  FillNeighborDistances(X);
+  QuickSelect(fK - 1);
+
+  var resList := new List<NeighborInfo>;
+
+  for var i := 0 to fK - 1 do
+  begin
+    var item: NeighborInfo;
+    item.Index := fNeighbors[i].idx;
+    item.Distance := Sqrt(fNeighbors[i].dist);
+    resList.Add(item);
+  end;
+
+  resList.Sort((a, b) -> a.Distance.CompareTo(b.Distance));
+  Result := resList.ToArray;
+end;
+
 procedure KNNBase.ValidatePredictInput(X: Matrix);
 begin
   if X = nil then
@@ -7176,6 +7917,37 @@ begin
 
   if X.ColCount <> fXTrain.ColCount then
     DimensionError(ER_FEATURE_COUNT_MISMATCH,X.ColCount,fXTrain.ColCount);
+end;
+
+procedure KNNBase.FillNeighborDistances(x: Vector);
+begin
+  if x = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if x.Length <> fXTrain.ColCount then
+    DimensionError(ER_FEATURE_COUNT_MISMATCH, x.Length, fXTrain.ColCount);
+
+  var n := fXTrain.RowCount;
+  var p := fXTrain.ColCount;
+  var trainRows := fXTrain.Data.Rows;
+
+  for var t := 0 to n - 1 do
+  begin
+    var rowTrain := trainRows[t];
+    var sum := 0.0;
+
+    for var j := 0 to p - 1 do
+    begin
+      var diff := rowTrain[j] - x[j];
+      sum += diff * diff;
+    end;
+
+    fNeighbors[t].dist := sum;
+    fNeighbors[t].idx := t;
+  end;
 end;
 
 function KNNBase.SquaredL2(trainRow: integer; XTest: Matrix; testRow: integer): double;
@@ -7202,16 +7974,14 @@ begin
   var left := 0;
   var right := fNeighbors.Length - 1;
 
-  while true do
+  while left < right do
   begin
-    var pivotIndex := Partition(left, right);
+    var p := Partition(left, right);
 
-    if pivotIndex = k then
-      exit
-    else if pivotIndex > k then
-      right := pivotIndex - 1
+    if k <= p then
+      right := p
     else
-      left := pivotIndex + 1;
+      left := p + 1;
   end;
 end;
 
@@ -7354,7 +8124,7 @@ begin
   inherited Create(k, weighting);
 end;
 
-function KNNClassifier.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function KNNClassifier.Fit(X: Matrix; y: array of integer): IClassifier;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -7372,10 +8142,7 @@ begin
     ArgumentOutOfRangeError(ER_K_EXCEEDS_SAMPLES);
 
   if MLConfig.ValidateFiniteInputs then
-  begin
     CheckXForFit(X);
-    CheckYForFit(y);
-  end;
 
   var n := X.RowCount;
 
@@ -7386,24 +8153,18 @@ begin
   // ЕДИНЫЙ ENCODING
   // =========================================================
 
-  var yInt := LabelsToInts(y);
-
   var classesInt: array of integer;
-  var yEncArr := EncodeLabelsInt(yInt, classesInt);
+  var yEncArr := EncodeLabelsInt(y, classesInt);
 
   fClassCount := classesInt.Length;
 
   if fClassCount < 2 then
     ArgumentError(ER_NEED_AT_LEAST_TWO_CLASSES);
 
-  // сохранить оригинальные метки (double API)
-  SetLength(fClasses, fClassCount);
-  for var i := 0 to fClassCount - 1 do
-    fClasses[i] := classesInt[i];
-  
-  SetLength(fClassLabels, fClassCount);
-  for var i := 0 to fClassCount - 1 do
-    fClassLabels[i] := fClasses[i].ToString;
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassValues(classesInt);
+  fLabels.BuildDefaultClassLabels;
 
   // сохранить encoded y
   SetLength(fYEnc, n);
@@ -7426,27 +8187,12 @@ begin
   Result := Self;
 end;
 
-function KNNClassifier.GetClasses: array of real;
-begin
-  Result := fClasses;
-end;
-
 function KNNClassifier.Clone: IModel;
 begin
   Result := new KNNClassifier(fK, fWeighting);
 end;
 
-function KNNClassifier.Predict(X: Matrix): Vector;
-begin
-  var labels := PredictLabels(X);
-  
-  Result := new Vector(labels.Length);
-  
-  for var i := 0 to labels.Length - 1 do
-    Result[i] := fClasses[labels[i]];
-end;
-
-function KNNClassifier.PredictLabels(X: Matrix): array of integer;
+function KNNClassifier.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -7484,24 +8230,49 @@ begin
       fNeighbors[t].idx := t;
     end;
 
-    QuickSelect(fK - 1);
+    fEpoch += 1;
+    var touchCount := 0;
+    var exactCount := 0;
 
-    var exactCls := -1;
-    for var t := 0 to fK - 1 do
+    for var t := 0 to n - 1 do
       if fNeighbors[t].dist < KNN_EPS then
       begin
-        exactCls := fYEnc[fNeighbors[t].idx];
-        break;
+        var cls := fYEnc[fNeighbors[t].idx];
+
+        if fMark[cls] <> fEpoch then
+        begin
+          fMark[cls] := fEpoch;
+          fVotes[cls] := 0.0;
+          fTouched[touchCount] := cls;
+          touchCount += 1;
+        end;
+
+        fVotes[cls] += 1.0;
+        exactCount += 1;
       end;
 
-    if exactCls <> -1 then
+    if exactCount > 0 then
     begin
-      Result[i] := exactCls;
+      var bestCls := fTouched[0];
+      var bestVotes := fVotes[bestCls];
+
+      for var k2 := 1 to touchCount - 1 do
+      begin
+        var cls := fTouched[k2];
+        var v := fVotes[cls];
+
+        if v > bestVotes then
+        begin
+          bestVotes := v;
+          bestCls := cls;
+        end;
+      end;
+
+      Result[i] := fLabels.ClassValueAt(bestCls);
       continue;
     end;
 
-    fEpoch += 1;
-    var touchCount := 0;
+    QuickSelect(fK - 1);
 
     if fWeighting = Uniform then
     begin
@@ -7537,23 +8308,9 @@ begin
           touchCount += 1;
         end;
 
-        if dist < KNN_EPS then
-        begin
-          exactCls := cls;
-          break;
-        end
-        else
-        begin
-          var w := 1.0 / Sqrt(dist);
-          fVotes[cls] += w;
-        end;
+        var w := 1.0 / Sqrt(dist);
+        fVotes[cls] += w;
       end;
-    end;
-    
-    if exactCls <> -1 then
-    begin
-      Result[i] := exactCls;
-      continue;
     end;
 
     var bestCls := fTouched[0];
@@ -7571,8 +8328,30 @@ begin
       end;
     end;
 
-    Result[i] := bestCls;
+    Result[i] := fLabels.ClassValueAt(bestCls);
   end;
+end;
+
+function KNNClassifier.PredictOne(X: Vector): integer;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function RandomForestClassifier.PredictOne(X: Vector): integer;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function KNNClassifier.PredictLabels(X: Matrix): array of string;
+begin
+  var pred := Predict(X);
+
+  if fLabels = nil then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+
+  SetLength(Result, pred.Length);
+  for var i := 0 to pred.Length - 1 do
+    Result[i] := fLabels.ClassLabelOfValue(pred[i]);
 end;
 
 function KNNClassifier.PredictProba(X: Matrix): Matrix;
@@ -7610,27 +8389,40 @@ begin
       fNeighbors[t].idx := t;
     end;
 
-    // выбрать k ближайших
-    QuickSelect(fK - 1);
+    fEpoch += 1;
+    var touchCount := 0;
+    var exactCount := 0;
 
-    // exact match: если среди k ближайших есть dist=0, вероятность 1 у его класса
-    var exactCls := -1;
-    for var t := 0 to fK - 1 do
+    for var t := 0 to n - 1 do
       if fNeighbors[t].dist < KNN_EPS then
       begin
-        exactCls := fYEnc[fNeighbors[t].idx];
-        break;
+        var cls := fYEnc[fNeighbors[t].idx];
+
+        if fMark[cls] <> fEpoch then
+        begin
+          fMark[cls] := fEpoch;
+          fVotes[cls] := 0.0;
+          fTouched[touchCount] := cls;
+          touchCount += 1;
+        end;
+
+        fVotes[cls] += 1.0;
+        exactCount += 1;
       end;
 
-    if exactCls <> -1 then
+    if exactCount > 0 then
     begin
-      Result[i, exactCls] := 1.0;
+      for var k2 := 0 to touchCount - 1 do
+      begin
+        var cls := fTouched[k2];
+        Result[i, cls] := fVotes[cls] / exactCount;
+      end;
+
       continue;
     end;
 
-    // voting (stamping)
-    fEpoch += 1;
-    var touchCount := 0;
+    // выбрать k ближайших
+    QuickSelect(fK - 1);
 
     if fWeighting = Uniform then
     begin
@@ -7667,12 +8459,6 @@ begin
         var cls := fYEnc[trainIdx];
         var dist := fNeighbors[t].dist;
     
-        if dist < KNN_EPS then
-        begin
-          exactCls := cls;
-          break;
-        end;
-    
         if fMark[cls] <> fEpoch then
         begin
           fMark[cls] := fEpoch;
@@ -7684,14 +8470,6 @@ begin
         var w := 1.0 / Sqrt(dist);   // согласовано с Predict
         fVotes[cls] += w;
         sumW += w;
-      end;
-    
-      // ОБЯЗАТЕЛЬНО проверить exact снова
-    
-      if exactCls <> -1 then
-      begin
-        Result[i, exactCls] := 1.0;
-        continue;
       end;
     
       // нормализация
@@ -7715,17 +8493,23 @@ begin
   end;
 end;
 
+function KNNClassifier.PredictProbaOne(X: Vector): Vector;
+begin
+  Result := PredictProba(SingleRowMatrix(X)).GetRow(0);
+end;
+
 procedure KNNClassifier.SetClassLabels(classes: array of string);
 begin
-  fClassLabels := Copy(classes);
+  if fLabels = nil then
+    fLabels := new ClassifierLabelHelper;
+  fLabels.SetClassLabels(classes);
 end;
 
 function KNNClassifier.GetClassLabels: array of string;
 begin
-  if fClassLabels = nil then
+  if fLabels = nil then
     ArgumentError(ER_CLASSES_NOT_AVAILABLE);
-
-  Result := Copy(fClassLabels);
+  Result := fLabels.GetClassLabels;
 end;    
 
 
@@ -7738,7 +8522,7 @@ begin
   inherited Create(k, weighting);
 end;
 
-function KNNRegressor.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function KNNRegressor.Fit(X: Matrix; y: Vector): IRegressor;
 begin
   if X = nil then
     ArgumentNullError(ER_X_NULL);
@@ -7866,6 +8650,11 @@ begin
   end;
 end;
 
+function KNNRegressor.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
 function KNNRegressor.Clone: IModel;
 begin
   Result := new KNNRegressor(fK, fWeighting);
@@ -7915,10 +8704,36 @@ begin
 end;
 
 function KMeans.RunSingle(X: Matrix; rnd: System.Random): (Matrix, real, integer, boolean);
-begin
   var n := X.RowCount;
   var p := X.ColCount;
   var k := fNClusters;
+
+  function ComputeInertia(curCenters: Matrix): real;
+  begin
+    Result := 0.0;
+
+    for var i := 0 to n - 1 do
+    begin
+      var bestDist := double.MaxValue;
+
+      for var c := 0 to k - 1 do
+      begin
+        var dist := 0.0;
+
+        for var j := 0 to p - 1 do
+        begin
+          var d := X[i,j] - curCenters[c,j];
+          dist += d * d;
+        end;
+
+        if dist < bestDist then
+          bestDist := dist;
+      end;
+
+      Result += bestDist;
+    end;
+  end;
+begin
 
   // --- 1. K-Means++ инициализация
 
@@ -7982,8 +8797,8 @@ begin
       end;
     end;
   
-    for var j := 0 to p - 1 do
-      centers[c,j] := X[chosen,j];
+  for var j := 0 to p - 1 do
+    centers[c,j] := X[chosen,j];
   end;
 
   var inertia := 0.0;
@@ -8041,12 +8856,14 @@ begin
 
     // --- 3. Пересчёт центроидов
     var maxShift := 0.0;
+    var hadEmptyCluster := False;
 
     for var c := 0 to k - 1 do
     begin
       if counts[c] = 0 then
       begin
         // Пустой кластер — переинициализация случайной точкой
+        hadEmptyCluster := True;
         var r := rnd.Next(n);
         for var j := 0 to p - 1 do
           centers[c,j] := X[r,j];
@@ -8065,6 +8882,9 @@ begin
       end;
     end;
 
+    if hadEmptyCluster then
+      maxShift := real.PositiveInfinity;
+
     if maxShift < fTol then
     begin
       converged := True;
@@ -8072,6 +8892,7 @@ begin
     end;
   end;
 
+  inertia := ComputeInertia(centers);
   Result := (centers, inertia, iterations, converged);
 end;
 
@@ -8131,7 +8952,7 @@ begin
   Result := Self;
 end;
 
-function KMeans.PredictLabels(X: Matrix): array of integer;
+function KMeans.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -8185,24 +9006,10 @@ begin
   end;
 end;
 
-function KMeans.Predict(X: Matrix): Vector;
-begin
-  if MLConfig.ValidateFiniteInputs then
-    CheckXForPredict(X);
-  
-  var labels := PredictLabels(X);
-
-  var n := Length(labels);
-  Result := new Vector(n);
-
-  for var i := 0 to n - 1 do
-    Result[i] := labels[i];
-end;
-
 function KMeans.FitPredict(X: Matrix): array of integer;
 begin
   Fit(X);
-  Result := PredictLabels(X);
+  Result := Predict(X);
 end;
 
 function KMeans.Clone: IModel;
@@ -8222,6 +9029,27 @@ begin
     ArgumentError(ER_MODEL_NOT_FITTED, 'KMeans');
 
   Result := fCenters.RowCount;
+end;
+
+function KMeans.Centers: array of Vector;
+begin
+  if not fFitted then
+    ArgumentError(ER_MODEL_NOT_FITTED, 'KMeans');
+
+  SetLength(Result, fCenters.RowCount);
+  for var i := 0 to fCenters.RowCount - 1 do
+    Result[i] := fCenters.GetRow(i);
+end;
+
+function KMeans.Center(clusterIndex: integer): Vector;
+begin
+  if not fFitted then
+    ArgumentError(ER_MODEL_NOT_FITTED, 'KMeans');
+
+  if (clusterIndex < 0) or (clusterIndex >= fCenters.RowCount) then
+    ArgumentOutOfRangeError(ER_LABEL_INDEX_OUT_OF_RANGE, clusterIndex, fCenters.RowCount);
+
+  Result := fCenters.GetRow(clusterIndex);
 end;
 
 //-----------------------------
@@ -8344,27 +9172,10 @@ begin
   Result := Self;
 end;
 
-function DBSCAN.PredictLabels(X: Matrix): array of integer;
-begin
-  if X = nil then
-    ArgumentNullError(ER_ARG_NULL, 'X');
-
-  if not fFitted then
-    NotFittedError(ER_FIT_NOT_CALLED);
-  
-  if MLConfig.ValidateFiniteInputs then
-    CheckXForPredict(X);
-
-  if X.RowCount <> Length(fLabels) then
-    ArgumentError(ER_DBSCAN_PREDICT_NEW_DATA);
-
-  Result := Copy(fLabels);
-end;
-
 function DBSCAN.FitPredict(X: Matrix): array of integer;
 begin
   Fit(X);
-  Result := PredictLabels(X);
+  Result := Copy(fLabels);
 end;
 
 function DBSCAN.Clone: IModel;
@@ -8385,7 +9196,7 @@ begin
   fFitted := false;
 end;
 
-constructor MatrixPipeline.Create(model: ISupervisedModel);
+constructor MatrixPipeline.Create(model: IModel);
 begin
   Create;
   if model = nil then
@@ -8393,23 +9204,21 @@ begin
   fModel := model;
 end;
 
-class function MatrixPipeline.Build(params steps: array of IPipelineStep): MatrixPipeline;
+class function MatrixPipeline.BuildClassification(params steps: array of IPipelineStep): ClassificationMatrixPipeline;
 begin
   if (steps = nil) or (Length(steps) = 0) then
     ArgumentError(ER_PIPELINE_NO_STEPS);
 
-  // последний шаг
   var last := steps[High(steps)];
 
   if last = nil then
     ArgumentError(ER_PIPELINE_STEP_NULL, High(steps));
 
-  if not (last is ISupervisedModel) then
-    ArgumentError(ER_PIPELINE_LAST_NOT_SUPERVISED_MODEL);
+  if not (last is IClassifier) then
+    ArgumentError(ER_PIPELINE_LAST_NOT_MODEL);
 
-  var pipe := new MatrixPipeline(last as ISupervisedModel);
+  Result := new ClassificationMatrixPipeline(last as IClassifier);
 
-  // все шаги кроме последнего — трансформеры
   for var i := 0 to High(steps) - 1 do
   begin
     var step := steps[i];
@@ -8420,10 +9229,66 @@ begin
     if not (step is ITransformer) then
       ArgumentError(ER_PIPELINE_INVALID_STEP_ORDER);
 
-    pipe.Add(step as ITransformer);
+    Result.Add(step as ITransformer);
   end;
+end;
 
-  Result := pipe;
+class function MatrixPipeline.BuildRegression(params steps: array of IPipelineStep): RegressionMatrixPipeline;
+begin
+  if (steps = nil) or (Length(steps) = 0) then
+    ArgumentError(ER_PIPELINE_NO_STEPS);
+
+  var last := steps[High(steps)];
+
+  if last = nil then
+    ArgumentError(ER_PIPELINE_STEP_NULL, High(steps));
+
+  if not (last is IRegressor) then
+    ArgumentError(ER_PIPELINE_LAST_NOT_MODEL);
+
+  Result := new RegressionMatrixPipeline(last as IRegressor);
+
+  for var i := 0 to High(steps) - 1 do
+  begin
+    var step := steps[i];
+
+    if step = nil then
+      ArgumentError(ER_PIPELINE_STEP_NULL, i);
+
+    if not (step is ITransformer) then
+      ArgumentError(ER_PIPELINE_INVALID_STEP_ORDER);
+
+    Result.Add(step as ITransformer);
+  end;
+end;
+
+class function MatrixPipeline.BuildClustering(params steps: array of IPipelineStep): ClusteringMatrixPipeline;
+begin
+  if (steps = nil) or (Length(steps) = 0) then
+    ArgumentError(ER_PIPELINE_NO_STEPS);
+
+  var last := steps[High(steps)];
+
+  if last = nil then
+    ArgumentError(ER_PIPELINE_STEP_NULL, High(steps));
+
+  if not (last is IClusterer) then
+    ArgumentError(ER_MODEL_NOT_CLUSTERER, last.GetType.Name);
+
+  Result := new ClusteringMatrixPipeline(last as IModel);
+
+  for var i := 0 to High(steps) - 1 do
+  begin
+    var step := steps[i];
+
+    if step = nil then
+      ArgumentError(ER_PIPELINE_STEP_NULL, i);
+
+    if not (step is ITransformer) then
+      ArgumentError(ER_PIPELINE_INVALID_STEP_ORDER);
+
+    Result.Add(step as ITransformer);
+  end;
 end;
 
 function MatrixPipeline.Add(t: ITransformer): MatrixPipeline;
@@ -8435,7 +9300,7 @@ begin
   Result := Self;
 end;
 
-function MatrixPipeline.SetModel(m: ISupervisedModel): MatrixPipeline;
+function MatrixPipeline.SetModel(m: IModel): MatrixPipeline;
 begin
   if m = nil then
     ArgumentError(ER_MODEL_NULL);
@@ -8444,7 +9309,7 @@ begin
   Result := Self;
 end;
 
-function MatrixPipeline.Fit(X: Matrix; y: Vector): ISupervisedModel;
+function MatrixPipeline.Fit(X: Matrix; y: Vector): IModel;
 begin
   if fModel = nil then
     ArgumentError(ER_MODEL_NULL);
@@ -8483,8 +9348,8 @@ begin
       ArgumentError(ER_PIPELINE_TRANSFORM_RETURNED_NULL);
   end;
 
-  if fModel is ISupervisedModel(var supModel) then
-    fModel := supModel.Fit(Xt, y)
+  if fModel is IRegressor(var regModel) then
+    fModel := regModel.Fit(Xt, y)
   else
     ArgumentError(ER_Model_NoFit, fModel.GetType.Name);
 
@@ -8524,8 +9389,11 @@ begin
   if fModel = nil then
     ArgumentError(ER_MODEL_NULL);
 
+  if not (fModel is IRegressor) then
+    Error(ER_PREDICT_NOT_SUPPORTED);
+
   var Xt := Transform(X);
-  Result := fModel.Predict(Xt);
+  Result := (fModel as IRegressor).Predict(Xt);
 end;
 
 function MatrixPipeline.PredictProba(X: Matrix): Matrix;
@@ -8543,6 +9411,138 @@ begin
 
   Result := (fModel as IProbabilisticClassifier)
               .PredictProba(Xt);
+end;
+
+function ClassificationMatrixPipeline.Fit(X: Matrix; y: array of integer): IClassifier;
+begin
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  if not (fModel is IClassifier) then
+    ArgumentError(ER_Model_NoFit, fModel.GetType.Name);
+
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if y = nil then
+    ArgumentNullError(ER_Y_NULL);
+
+  if X.RowCount <> y.Length then
+    DimensionError(ER_XY_SIZE_MISMATCH, X.RowCount, y.Length);
+
+  if X.RowCount = 0 then
+    ArgumentError(ER_EMPTY_DATASET);
+
+  var Xt := X;
+  var yVec: Vector := nil;
+
+  for var i := 0 to fTransformers.Count - 1 do
+  begin
+    var t := fTransformers[i];
+
+    if t = nil then
+      ArgumentError(ER_PIPELINE_STEP_NULL);
+
+    if t is ISupervisedTransformer(var sup) then
+    begin
+      if yVec = nil then
+        yVec := new Vector(y);
+      fTransformers[i] := sup.Fit(Xt, yVec);
+    end
+    else if t is IUnsupervisedTransformer(var unsup) then
+      fTransformers[i] := unsup.Fit(Xt)
+    else
+      ArgumentError(ER_PIPELINE_TRANSFORMER_NO_FIT, i, t.GetType.Name);
+
+    Xt := fTransformers[i].Transform(Xt);
+
+    if Xt = nil then
+      ArgumentError(ER_PIPELINE_TRANSFORM_RETURNED_NULL);
+  end;
+
+  fModel := (fModel as IClassifier).Fit(Xt, y);
+  fFitted := true;
+  Result := Self;
+end;
+
+function RegressionMatrixPipeline.Fit(X: Matrix; y: Vector): IRegressor;
+begin
+  inherited Fit(X, y);
+  Result := Self;
+end;
+
+function RegressionMatrixPipeline.PredictOne(X: Vector): real;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function ClassificationMatrixPipeline.Predict(X: Matrix): array of integer;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  if not (fModel is IClassifier) then
+    Error(ER_PREDICT_NOT_SUPPORTED);
+
+  var Xt := Transform(X);
+  Result := (fModel as IClassifier).Predict(Xt);
+end;
+
+function ClassificationMatrixPipeline.PredictOne(X: Vector): integer;
+begin
+  Result := Predict(SingleRowMatrix(X))[0];
+end;
+
+function ClassificationMatrixPipeline.PredictLabels(X: Matrix): array of string;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  if not (fModel is IClassifier) then
+    Error(ER_PREDICT_NOT_SUPPORTED);
+
+  var Xt := Transform(X);
+  Result := (fModel as IClassifier).PredictLabels(Xt);
+end;
+
+function ClassificationMatrixPipeline.PredictProba(X: Matrix): Matrix;
+begin
+  if not fFitted then
+    NotFittedError(ER_FIT_NOT_CALLED);
+
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  if not (fModel is IProbabilisticClassifier) then
+    ArgumentError(ER_PROBA_NOT_SUPPORTED);
+
+  var Xt := Transform(X);
+  Result := (fModel as IProbabilisticClassifier).PredictProba(Xt);
+end;
+
+function ClassificationMatrixPipeline.PredictProbaOne(X: Vector): Vector;
+begin
+  Result := PredictProba(SingleRowMatrix(X)).GetRow(0);
+end;
+
+procedure ClassificationMatrixPipeline.SetClassLabels(classes: array of string);
+begin
+  if (fModel = nil) or not (fModel is IClassifierInternal) then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  (fModel as IClassifierInternal).SetClassLabels(classes);
+end;
+
+function ClassificationMatrixPipeline.GetClassLabels: array of string;
+begin
+  if (fModel = nil) or not (fModel is IClassifier) then
+    ArgumentError(ER_CLASSES_NOT_AVAILABLE);
+  Result := (fModel as IClassifier).GetClassLabels;
 end;
 
 function MatrixPipeline.ToString: string;
@@ -8576,25 +9576,51 @@ begin
 
   var m := fModel.Clone;
 
-  if not (m is ISupervisedModel) then
+  if not (m is IModel) then
     Error(ER_INTERNAL_INVALID_MODEL_CLONE);
 
-  p.SetModel(m as ISupervisedModel);
+  p.SetModel(m as IModel);
+
+  Result := p;
+end;
+
+function ClassificationMatrixPipeline.Clone: IModel;
+begin
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  var p := new ClassificationMatrixPipeline(fModel.Clone as IClassifier);
+
+  foreach var t in fTransformers do
+    p.Add(t.Clone);
+
+  Result := p;
+end;
+
+function RegressionMatrixPipeline.Clone: IModel;
+begin
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  var p := new RegressionMatrixPipeline(fModel.Clone as IRegressor);
+
+  foreach var t in fTransformers do
+    p.Add(t.Clone);
 
   Result := p;
 end;
 
 //-----------------------------
-//          UMatrixPipeline 
+//    UnsupervisedMatrixPipelineBase
 //-----------------------------
-constructor UMatrixPipeline.Create;
+constructor UnsupervisedMatrixPipelineBase.Create;
 begin
   fTransformers := new List<ITransformer>;
   fModel := nil;
   fFitted := false;
 end;
 
-constructor UMatrixPipeline.Create(model: IModel);
+constructor UnsupervisedMatrixPipelineBase.Create(model: IModel);
 begin
   Create;
   if model = nil then
@@ -8602,7 +9628,7 @@ begin
   fModel := model;
 end;
 
-class function UMatrixPipeline.Build(params steps: array of IPipelineStep): UMatrixPipeline;
+class function UnsupervisedMatrixPipelineBase.Build(params steps: array of IPipelineStep): ClusteringMatrixPipeline;
 begin
   if (steps = nil) or (Length(steps) = 0) then
     ArgumentError(ER_PIPELINE_NO_STEPS);
@@ -8612,10 +9638,10 @@ begin
   if last = nil then
     ArgumentError(ER_PIPELINE_STEP_NULL, High(steps));
 
-  if not (last is IModel) then
-    ArgumentError(ER_PIPELINE_LAST_NOT_MODEL);
+  if not (last is IClusterer) then
+    ArgumentError(ER_MODEL_NOT_CLUSTERER, last.GetType.Name);
 
-  var pipe := new UMatrixPipeline(last as IModel);
+  var pipe := new ClusteringMatrixPipeline(last as IModel);
 
   for var i := 0 to High(steps) - 1 do
   begin
@@ -8633,7 +9659,7 @@ begin
   Result := pipe;
 end;
 
-function UMatrixPipeline.Add(t: ITransformer): UMatrixPipeline;
+function UnsupervisedMatrixPipelineBase.Add(t: ITransformer): UnsupervisedMatrixPipelineBase;
 begin
   if t = nil then
     ArgumentError(ER_TRANSFORMER_NULL);
@@ -8642,16 +9668,64 @@ begin
   Result := Self;
 end;
 
-function UMatrixPipeline.SetModel(m: IModel): UMatrixPipeline;
+function UnsupervisedMatrixPipelineBase.SetModel(m: IModel): UnsupervisedMatrixPipelineBase;
 begin
   if m = nil then
     ArgumentError(ER_MODEL_NULL);
+
+  if (Self is ClusteringMatrixPipeline) and not (m is IClusterer) then
+    ArgumentError(ER_MODEL_NOT_CLUSTERER, m.GetType.Name);
 
   fModel := m;
   Result := Self;
 end;
 
-function UMatrixPipeline.Fit(X: Matrix): IUnsupervisedModel;
+function ClusteringMatrixPipeline.SetModel(m: IClusterer): ClusteringMatrixPipeline;
+begin
+  Result := inherited SetModel(m as IModel) as ClusteringMatrixPipeline;
+end;
+
+function ClusteringMatrixPipeline.FitPredict(X: Matrix): array of integer;
+begin
+  if fModel = nil then
+    ArgumentError(ER_MODEL_NULL);
+
+  if X = nil then
+    ArgumentNullError(ER_X_NULL);
+
+  if X.RowCount = 0 then
+    ArgumentError(ER_EMPTY_DATASET);
+
+  var Xt := X;
+
+  for var i := 0 to fTransformers.Count - 1 do
+  begin
+    var t := fTransformers[i];
+
+    if t = nil then
+      ArgumentError(ER_PIPELINE_STEP_NULL);
+
+    if t is IUnsupervisedTransformer(var unsup) then
+      fTransformers[i] := unsup.Fit(Xt)
+    else
+      ArgumentError(ER_PIPELINE_TRANSFORMER_NO_FIT, i, t.GetType.Name);
+
+    Xt := fTransformers[i].Transform(Xt);
+
+    if Xt = nil then
+      ArgumentError(ER_PIPELINE_TRANSFORM_RETURNED_NULL);
+  end;
+
+  if not (fModel is IClusterer) then
+    ArgumentError(ER_MODEL_NOT_CLUSTERER, fModel.GetType.Name);
+
+  var cl := fModel as IClusterer;
+  Result := cl.FitPredict(Xt);
+  fModel := cl as IModel;
+  fFitted := true;
+end;
+
+function UnsupervisedMatrixPipelineBase.Fit(X: Matrix): IUnsupervisedModel;
 begin
   if fModel = nil then
     ArgumentError(ER_MODEL_NULL);
@@ -8691,7 +9765,7 @@ begin
   Result := Self;
 end;
 
-function UMatrixPipeline.Transform(X: Matrix): Matrix;
+function UnsupervisedMatrixPipelineBase.Transform(X: Matrix): Matrix;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -8715,7 +9789,7 @@ begin
   Result := Xt;
 end;
 
-function UMatrixPipeline.Predict(X: Matrix): Vector;
+function UnsupervisedMatrixPipelineBase.Predict(X: Matrix): array of integer;
 begin
   if not fFitted then
     NotFittedError(ER_FIT_NOT_CALLED);
@@ -8725,15 +9799,15 @@ begin
 
   var Xt := Transform(X);
 
-  if not (fModel is IPredictiveModel) then
+  if not (fModel is IPredictiveClusterer) then
     Error(ER_PREDICT_NOT_SUPPORTED);
   
-  Result := (fModel as IPredictiveModel).Predict(Xt);
+  Result := (fModel as IPredictiveClusterer).Predict(Xt);
 end;
 
-function UMatrixPipeline.ToString: string;
+function UnsupervisedMatrixPipelineBase.ToString: string;
 begin
-  var sb := 'UMatrixPipeline (' +
+  var sb := 'UnsupervisedMatrixPipelineBase (' +
             (if fFitted then 'trained' else 'not trained') + '):' + NewLine;
 
   var idx := 1;
@@ -8750,12 +9824,12 @@ begin
   Result := sb;
 end;
 
-function UMatrixPipeline.Clone: IModel;
+function UnsupervisedMatrixPipelineBase.Clone: IModel;
 begin
   if fModel = nil then
     ArgumentError(ER_MODEL_NULL);
 
-  var p := new UMatrixPipeline;
+  var p := new ClusteringMatrixPipeline;
 
   foreach var t in fTransformers do
     p.Add(t.Clone);
@@ -8784,6 +9858,12 @@ begin
 
   fFitted := true;
   Result := Self;
+end;
+
+function StandardScaler.FitTransform(X: Matrix): Matrix;
+begin
+  Fit(X);
+  Result := Transform(X);
 end;
 
 function StandardScaler.Transform(X: Matrix): Matrix;
@@ -8878,6 +9958,12 @@ begin
 
   fFitted := true;
   Result := Self;
+end;
+
+function MinMaxScaler.FitTransform(X: Matrix): Matrix;
+begin
+  Fit(X);
+  Result := Transform(X);
 end;
 
 function MinMaxScaler.Transform(X: Matrix): Matrix;
@@ -8998,6 +10084,12 @@ begin
   Result := Self;
 end;
 
+function PCATransformer.FitTransform(X: Matrix): Matrix;
+begin
+  Fit(X);
+  Result := Transform(X);
+end;
+
 function PCATransformer.Transform(X: Matrix): Matrix;
 begin
   if not fFitted then
@@ -9073,6 +10165,12 @@ begin
   fFitted := true;
 
   Result := Self;
+end;
+
+function VarianceThreshold.FitTransform(X: Matrix): Matrix;
+begin
+  Fit(X);
+  Result := Transform(X);
 end;
 
 function VarianceThreshold.Transform(X: Matrix): Matrix;
@@ -9396,6 +10494,12 @@ begin
   Result := Self;
 end;
 
+function SelectKBest.FitTransform(X: Matrix; y: Vector): Matrix;
+begin
+  Fit(X, y);
+  Result := Transform(X);
+end;
+
 function SelectKBest.Transform(X: Matrix): Matrix;
 begin
   if not fFitted then
@@ -9463,6 +10567,12 @@ begin
 
   fFitted := true;
   Result := Self;
+end;
+
+function Normalizer.FitTransform(X: Matrix): Matrix;
+begin
+  Fit(X);
+  Result := Transform(X);
 end;
 
 function Normalizer.Transform(X: Matrix): Matrix;

@@ -2,7 +2,19 @@
 
 interface
 
-// Здесь пока только методы расширения поэтому секция interface - пуста  
+type
+  /// Результат кодирования целевого столбца:
+  /// целочисленные метки и соответствующие имена классов.
+  EncodedTarget = record
+    Labels: array of integer;
+    ClassNames: array of string;
+
+    /// Возвращает код класса для строки с индексом rowIndex.
+    function ClassIndex(rowIndex: integer): integer;
+
+    /// Возвращает имя класса для строки с индексом rowIndex.
+    function ClassName(rowIndex: integer): string;
+  end;
   
 implementation
 
@@ -23,11 +35,32 @@ const
   ER_ENCODELABELS_UNSUPPORTED_TYPE =
     'Неподдерживаемый тип столбца "{0}" для EncodeLabels!!Unsupported column type "{0}" for EncodeLabels';
   ER_TARGET_HAS_NA =
-    'Целевой столбец "{0}" содержит NA!!Target column "{0}" contains NA values';  
-    
-function ToMatrix(Self: DataFrame; colNames: array of string): Matrix; extensionmethod;
+    'Целевой столбец "{0}" содержит NA!!Target column "{0}" contains NA values';
+  ER_ENCODED_TARGET_ROW_INDEX_OUT_OF_RANGE =
+    'Индекс строки {0} вне диапазона [0, {1})!!Row index {0} is out of range [0, {1})';
+  ER_ENCODED_TARGET_CLASS_INDEX_OUT_OF_RANGE =
+    'Индекс класса {0} вне диапазона [0, {1})!!Class index {0} is out of range [0, {1})';
+
+function EncodedTarget.ClassIndex(rowIndex: integer): integer;
 begin
-  var df := Self;
+  if (rowIndex < 0) or (rowIndex >= Labels.Length) then
+    ArgumentOutOfRangeError(ER_ENCODED_TARGET_ROW_INDEX_OUT_OF_RANGE, rowIndex, Labels.Length);
+
+  Result := Labels[rowIndex];
+end;
+
+function EncodedTarget.ClassName(rowIndex: integer): string;
+begin
+  var cls := ClassIndex(rowIndex);
+
+  if (cls < 0) or (cls >= ClassNames.Length) then
+    ArgumentOutOfRangeError(ER_ENCODED_TARGET_CLASS_INDEX_OUT_OF_RANGE, cls, ClassNames.Length);
+
+  Result := ClassNames[cls];
+end;
+    
+function ToMatrixByNames(df: DataFrame; colNames: array of string): Matrix;
+begin
   var n := df.RowCount;
   var p := colNames.Length;
 
@@ -39,17 +72,66 @@ begin
   for var j := 0 to p - 1 do
   begin
     var col := df[colNames[j]];
-
-    for var i := 0 to n - 1 do
-    begin
-      var value: real;
-
-      if not col.TryGetNumericValue(i, value) then
+    case col.Info.ColType of
+      ColumnType.ctInt:
+        begin
+          var c := IntColumn(col);
+          for var i := 0 to n - 1 do
+          begin
+            if not c.IsValid[i] then
+              ArgumentError(ER_TO_MATRIX_NON_NUMERIC, colNames[j]);
+            Result[i,j] := c.Data[i];
+          end;
+        end;
+      ColumnType.ctFloat:
+        begin
+          var c := FloatColumn(col);
+          for var i := 0 to n - 1 do
+          begin
+            if not c.IsValid[i] then
+              ArgumentError(ER_TO_MATRIX_NON_NUMERIC, colNames[j]);
+            Result[i,j] := c.Data[i];
+          end;
+        end;
+      ColumnType.ctBool:
+        begin
+          var c := BoolColumn(col);
+          for var i := 0 to n - 1 do
+          begin
+            if not c.IsValid[i] then
+              ArgumentError(ER_TO_MATRIX_NON_NUMERIC, colNames[j]);
+            Result[i,j] := if c.Data[i] then 1.0 else 0.0;
+          end;
+        end;
+      else
         ArgumentError(ER_TO_MATRIX_NON_NUMERIC, colNames[j]);
-
-      Result[i,j] := value;
     end;
   end;
+end;
+
+/// Преобразует указанные по именам столбцы DataFrame в числовую матрицу.
+/// Каждый выбранный столбец должен иметь числовой тип и не содержать NA.
+function ToMatrix(Self: DataFrame; colNames: array of string): Matrix; extensionmethod;
+begin
+  Result := ToMatrixByNames(Self, colNames);
+end;
+
+/// Преобразует все столбцы DataFrame в числовую матрицу.
+/// Каждый столбец должен иметь числовой тип и не содержать NA.
+function ToMatrix(Self: DataFrame): Matrix; extensionmethod;
+begin
+  Result := ToMatrixByNames(Self, Self.Schema.ColumnNames);
+end;
+
+/// Преобразует указанные по номерам столбцы DataFrame в числовую матрицу.
+/// Каждый выбранный столбец должен иметь числовой тип и не содержать NA.
+function ToMatrix(Self: DataFrame; colIndices: array of integer): Matrix; extensionmethod;
+begin
+  var colNames := new string[colIndices.Length];
+  for var i := 0 to colIndices.Length - 1 do
+    colNames[i] := Self.Schema.NameAt(colIndices[i]);
+
+  Result := ToMatrixByNames(Self, colNames);
 end;
 
 function ToVector(Self: DataFrame; colName: string): Vector; extensionmethod;
@@ -59,15 +141,39 @@ begin
   Result := new Vector(n);
 
   var col := df[colName];
-
-  for var i := 0 to n - 1 do
-  begin
-    var value: real;
-
-    if not col.TryGetNumericValue(i, value) then
+  case col.Info.ColType of
+    ColumnType.ctInt:
+      begin
+        var c := IntColumn(col);
+        for var i := 0 to n - 1 do
+        begin
+          if not c.IsValid[i] then
+            ArgumentError(ER_TO_VECTOR_NON_NUMERIC, colName);
+          Result[i] := c.Data[i];
+        end;
+      end;
+    ColumnType.ctFloat:
+      begin
+        var c := FloatColumn(col);
+        for var i := 0 to n - 1 do
+        begin
+          if not c.IsValid[i] then
+            ArgumentError(ER_TO_VECTOR_NON_NUMERIC, colName);
+          Result[i] := c.Data[i];
+        end;
+      end;
+    ColumnType.ctBool:
+      begin
+        var c := BoolColumn(col);
+        for var i := 0 to n - 1 do
+        begin
+          if not c.IsValid[i] then
+            ArgumentError(ER_TO_VECTOR_NON_NUMERIC, colName);
+          Result[i] := if c.Data[i] then 1.0 else 0.0;
+        end;
+      end;
+    else
       ArgumentError(ER_TO_VECTOR_NON_NUMERIC, colName);
-
-    Result[i] := value;
   end;
 end;
 
@@ -86,9 +192,6 @@ begin
   if not Self.HasColumn(target) then
     ArgumentError(ER_COLUMN_NOT_FOUND, target);
 
-  if not Self.IsCategorical(target) then
-    ArgumentError(ER_ENCODELABELS_NOT_CATEGORICAL, target);
-  
   var col := Self[target];
   for var i := 0 to Self.RowCount - 1 do
     if not col.IsValid[i] then
@@ -96,16 +199,23 @@ begin
 
   if Self.GetColumnType(target) = ColumnType.ctStr then
   begin
-    var labels := Self.GetStrColumn(target);
+    var labels := Self.StrValues(target);
     Result := EncodeLabels(labels);
     exit;
   end;
 
   if Self.GetColumnType(target) = ColumnType.ctInt then
   begin
-    var labels := Self.GetIntColumn(target).ToArray;
+    var labels := Self.IntValues(target).ToArray;
     var classes: array of integer;
     Result := EncodeLabelsInt(labels,classes);
+    exit;
+  end;
+
+  if Self.GetColumnType(target) = ColumnType.ctBool then
+  begin
+    var labels := Self.BoolValues(target).ToArray.Select(x -> x.ToString).ToArray;
+    Result := EncodeLabels(labels);
     exit;
   end;
 
@@ -118,7 +228,7 @@ end;
 /// Каждому уникальному значению присваивается номер 0,1,2,...
 /// Порядок кодирования соответствует порядку первого появления значений в столбце.
 /// В параметр classes возвращается массив уникальных значений в порядке кодирования.
-/// Работает только для категориальных столбцов типов string и integer.
+/// Работает для столбцов типов string, integer и boolean.
 /// Для целочисленных категориальных столбцов значения преобразуются в строки.
 /// Используется при подготовке данных для задач классификации и визуализации.
 function EncodeLabels(Self: DataFrame; target: string; var classes: array of string): array of integer; extensionmethod;
@@ -132,9 +242,6 @@ begin
   if not Self.HasColumn(target) then
     ArgumentError(ER_COLUMN_NOT_FOUND, target);
 
-  if not Self.IsCategorical(target) then
-    ArgumentError(ER_ENCODELABELS_NOT_CATEGORICAL, target);
-  
   var col := Self[target];
   for var i := 0 to Self.RowCount - 1 do
     if not col.IsValid[i] then
@@ -143,12 +250,12 @@ begin
   case Self.GetColumnType(target) of
     ColumnType.ctStr:
       begin
-        var labels := Self.GetStrColumn(target).ToArray;
+        var labels := Self.StrValues(target).ToArray;
         Result := EncodeLabels(labels, classes);
       end;
     ColumnType.ctInt:
       begin
-        var labels := Self.GetIntColumn(target).ToArray;
+        var labels := Self.IntValues(target).ToArray;
       
         var intClasses: array of integer;
         Result := EncodeLabelsInt(labels, intClasses);
@@ -156,9 +263,24 @@ begin
         // если API требует string classes:
         classes := intClasses.Select(x -> x.ToString).ToArray;
       end;
+    ColumnType.ctBool:
+      begin
+        var labels := Self.BoolValues(target).ToArray.Select(x -> x.ToString).ToArray;
+        Result := EncodeLabels(labels, classes);
+      end;
     else
       ArgumentError(ER_ENCODELABELS_UNSUPPORTED_TYPE, target);
   end;
+end;
+
+/// Кодирует целевой столбец DataFrame и возвращает
+/// целочисленные метки вместе с массивом имён классов.
+/// Порядок кодирования соответствует порядку первого появления значений.
+function EncodeTarget(Self: DataFrame; target: string): EncodedTarget; extensionmethod;
+begin
+  var classes: array of string;
+  Result.Labels := Self.EncodeLabels(target, classes);
+  Result.ClassNames := classes;
 end;
 
 /// Преобразует строковые метки целевого столбца в целочисленные индексы (0,1,2,...)
@@ -180,9 +302,6 @@ begin
   if not Self.HasColumn(target) then
     ArgumentError(ER_COLUMN_NOT_FOUND, target);
 
-  if not Self.IsCategorical(target) then
-    ArgumentError(ER_ENCODELABELS_NOT_CATEGORICAL, target);
-  
   var col := Self[target];
   for var i := 0 to Self.RowCount - 1 do
     if not col.IsValid[i] then
@@ -191,12 +310,22 @@ begin
   case Self.GetColumnType(target) of
     ColumnType.ctStr:
       begin
-        var data := Self.GetStrColumn(target).ToArray;
+        var data := Self.StrValues(target).ToArray;
         Result := TransformLabels(data, classes);
       end;
     ColumnType.ctInt:
       begin
-        var data := Self.GetIntColumn(target).ToArray;
+        var data := Self.IntValues(target).ToArray;
+        var strData := new string[data.Length];
+  
+        for var i := 0 to data.Length - 1 do
+          strData[i] := data[i].ToString;
+  
+        Result := TransformLabels(strData, classes);
+      end;
+    ColumnType.ctBool:
+      begin
+        var data := Self.BoolValues(target).ToArray;
         var strData := new string[data.Length];
   
         for var i := 0 to data.Length - 1 do
@@ -238,7 +367,7 @@ begin
     if not col.IsValid[i] then
       ArgumentError(ER_TARGET_HAS_NA, target);
 
-  var data := Self.GetIntColumn(target).ToArray;
+  var data := Self.IntValues(target).ToArray;
 
   Result := TransformLabelsInt(data, classes);
 end;
@@ -271,7 +400,7 @@ begin
     if not col.IsValid[i] then
       ArgumentError(ER_TARGET_HAS_NA, target);
 
-  var labels := Self.GetIntColumn(target).ToArray;
+  var labels := Self.IntValues(target).ToArray;
 
   Result := EncodeLabelsInt(labels, classes);
 end;

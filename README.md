@@ -13,7 +13,7 @@ Before installing the IDE, ensure you have Python, Mono, Git, and the Textual li
 </p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Interface in a graphical environment" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Interface in a graphical environment" width="400">
 </p>
 
 # Instructions for Termux
@@ -97,7 +97,7 @@ pip3 install textual
 (It is advisable to install DotNet, but it is not required.)
 
 ```bash
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
+sudo apt install dotnet-runtime-8.0
 ```
 
 ```bash

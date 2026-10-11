@@ -17,7 +17,7 @@ abc-pascal-tui — це IDE для Паскаля, заснована на ко�
 </p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Interface in a graphical environment" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Інтерфейс у графічному середовищі" width="400">
 </p>
 
 ---
@@ -105,7 +105,7 @@ pip3 install textual
 (Бажано встановити DotNet, але не обов'язково.)
 
 ```bash
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
+sudo apt install dotnet-runtime-8.0
 ```
 
 ```bash

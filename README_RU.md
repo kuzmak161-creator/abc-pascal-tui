@@ -14,8 +14,8 @@ abc-pascal-tui — это IDE для Pascal на основе компилято
 <p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Interface in a graphical environment" width="400">
-</p>
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Интерфейс в граф окружении" width="400">
+<p>
 
 # Инструкция для Termux
 
@@ -89,7 +89,7 @@ pip3 install textual
 ```
 (Желательно установить DotNet, но это не обязательно.)
 ```bash
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
+sudo apt install dotnet-runtime-8.0
 ```
 
 ```bash

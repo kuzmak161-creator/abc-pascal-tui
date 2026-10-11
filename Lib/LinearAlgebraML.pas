@@ -28,6 +28,7 @@ type
   Vector = class
   private
     fdata: array of real;
+    static fDefaultStringFormat: string := 'smart';
     static procedure CheckSameLength(const a, b: Vector);
     static procedure CheckNonEmpty(const v: Vector); 
     procedure SetData(i: integer; value: real) := fdata[i] := value;
@@ -58,6 +59,10 @@ type
     function ToArray: array of real;
     /// Преобразует элементы вектора в массив целых чисел.
     function ToIntArray: array of integer;
+    /// Возвращает первые n элементов вектора.
+    function Head(n: integer): Vector;
+    /// Возвращает срез вектора начиная с startIndex длины count.
+    function Slice(startIndex, count: integer): Vector;
     
     static function operator +(a, b: Vector): Vector;
     static function operator -(a, b: Vector): Vector;
@@ -108,9 +113,11 @@ type
     
     // ---------- Сервисные методы ----------
     /// Возвращает строковое представление вектора.
-    function ToString: string; override := $'{fdata.Select(x -> x.ToString(''G3''))}';
+    function ToString: string; override;
     /// Возвращает строковое представление вектора с заданной точностью.
     function ToString(digits: integer): string := $'{fdata.Select(x -> x.ToString(''G''+digits))}';
+    /// Формат строкового представления элементов по умолчанию.
+    static property DefaultStringFormat: string read fDefaultStringFormat write fDefaultStringFormat;
     /// Печатает вектор без перевода строки.
     procedure Print := fdata.Print;
     /// Печатает вектор с переводом строки.
@@ -118,6 +125,11 @@ type
     
     /// Возвращает подмножество элементов по заданным индексам.
     function SubvectorBy(indices: array of integer): Vector;
+    /// Возвращает индексы элементов, удовлетворяющих условию.
+    function Indices(cond: real -> boolean): sequence of integer;
+    /// Возвращает индексы элементов, удовлетворяющих условию,
+    /// с доступом к значению и номеру элемента.
+    function Indices(cond: (real, integer) -> boolean): sequence of integer;
   end;
   
   Matrix = class
@@ -146,10 +158,16 @@ type
     /// Создаёт матрицу из двумерного массива вещественных значений.
     constructor Create(values: array[,] of real);
     
+    constructor Create(values: array of Vector);
+    
     /// Возвращает копию данных в виде двумерного массива.
     function ToArray2D: array[,] of real;
     /// Возвращает строку матрицы в виде массива.
     function RowToArray(r: integer): array of real;
+    /// Возвращает первые n строк матрицы.
+    function Head(n: integer): Matrix;
+    /// Возвращает срез строк матрицы начиная с startIndex длины count.
+    function RowSlice(startIndex, count: integer): Matrix;
     
     /// Возвращает копию матрицы.
     function Clone: Matrix;
@@ -225,6 +243,7 @@ type
 
     
     static function operator implicit(a: array [,] of real): Matrix := new Matrix(a);
+    static function operator implicit(a: array of Vector): Matrix := new Matrix(a);
     static function operator implicit(a: array of array of real): Matrix := new Matrix(Matr(a));
     static function operator implicit(a: array of array of integer): Matrix := new Matrix(Matr(a.ConvertAll(x -> x.ConvertAll(y -> real(y)))));
     
@@ -283,9 +302,13 @@ type
     function GetRow(i: integer): Vector;
     /// Возвращает столбец матрицы в виде вектора.
     function GetCol(j: integer): Vector;
+    /// Возвращает несколько столбцов матрицы в виде массива векторов.
+    function Cols(params colIndices: array of integer): array of Vector;
     
     /// Возвращает матрицу, составленную из строк с заданными индексами.
     function TakeRows(indices: array of integer): Matrix;
+    /// Возвращает матрицу, составленную из строк с заданными индексами.
+    function TakeRows(indices: sequence of integer): Matrix;
 
     // ---------- Статические методы ----------
     /// Возвращает единичную матрицу размера n
@@ -345,7 +368,7 @@ function SolveAuto(A: Matrix; b: Vector): Vector;
 /// Увеличивайте lambda, если коэффициенты x становятся слишком большими.
 ///
 /// Требуется, чтобы число уравнений было не меньше числа неизвестных (m ≥ n).
-/// Входные A и b изменяются. Возвращаемый вектор x имеет длину n.
+/// Входные A и b не изменяются. Возвращаемый вектор x имеет длину n.
 function SolveRidge(A: Matrix; b: Vector; lambda: real := 0): Vector;
 
 /// Решает задачу наименьших квадратов для системы A * x ≈ b.
@@ -365,12 +388,19 @@ implementation
 uses MLExceptions;
 
 const
+  DEFAULT_VECTOR_STRING_FORMAT = 'smart';
   ER_VECTOR_LENGTH_NEGATIVE =
     'Длина вектора должна быть неотрицательной!!Vector length must be non-negative';
   ER_VALUES_NULL =
     'values не может быть nil!!values cannot be nil';
+  ER_VALUES_EMPTY =
+    'values не может быть пустым!!values cannot be empty';
   ER_VECTOR_LENGTH_MISMATCH =
     'Несоответствие длины векторов: {0} и {1}!!Vector length mismatch: {0} vs {1}';
+  ER_VECTOR_NULL =
+    'Вектор не может быть nil!!vector cannot be nil';
+  ER_MATRIX_ROWS_HAVE_DIFFERENT_LENGTHS =
+    'Строки матрицы имеют разную длину!!matrix rows have different lengths';  
   ER_VECTOR_EMPTY =
     'Вектор пуст!!Vector is empty';
   ER_VECTOR_DIVIDE_BY_ZERO =
@@ -410,17 +440,73 @@ const
     'Матрица вырождена!!Matrix is singular';
   ER_VECTOR_SIZE_MISMATCH =
     'Несоответствие длины вектора: {0} и {1}!!Vector size mismatch: {0} and {1}';
+  ER_START_INDEX_NEGATIVE =
+    'Начальный индекс не может быть отрицательным!!Start index must be non-negative';
+  ER_COUNT_NEGATIVE =
+    'Количество элементов не может быть отрицательным!!Count must be non-negative';
+  ER_VECTOR_SLICE_OUT_OF_RANGE =
+    'Срез вектора выходит за границы: start={0}, count={1}, length={2}!!' +
+    'Vector slice out of range: start={0}, count={1}, length={2}';
+  ER_MATRIX_ROW_SLICE_OUT_OF_RANGE =
+    'Срез строк матрицы выходит за границы: start={0}, count={1}, rows={2}!!' +
+    'Matrix row slice out of range: start={0}, count={1}, rows={2}';
   ER_QR_REQUIRES_M_GE_N =
     'Для QR-разложения требуется m >= n!!QR decomposition requires m >= n';
   ER_SINGULAR_MATRIX =
     'Матрица вырождена или плохо обусловлена!!Matrix is singular or ill-conditioned';
   ER_EMPTY_MATRIX =
     'Матрица пуста!!Matrix is empty';    
+  ER_MATRIX_HAS_NONFINITE =
+    'Матрица содержит NaN или Infinity в позиции [{0},{1}]!!Matrix contains NaN or Infinity at [{0},{1}]';
+  ER_EIGEN_TOL_INVALID =
+    'Параметр tol должен быть > 0!!tol must be > 0';
+  ER_EIGEN_MAXITER_INVALID =
+    'Параметр maxIter должен быть > 0!!maxIter must be > 0';
   ER_EIGEN_NOT_CONVERGED =
     'EigenSymmetric: не сошлось за {0} итераций (off={1}, tol={2})!!EigenSymmetric did not converge in {0} iterations (off={1}, tol={2})';    
   
 type
   MLNotSPDException = class(MLException);
+
+function FormatVectorValue(x: real; fmt: string): string;
+begin
+  if (fmt = nil) or (fmt = '') then
+    fmt := DEFAULT_VECTOR_STRING_FORMAT;
+  
+  if fmt = 'smart' then
+  begin
+    var ax := PABCSystem.Abs(x);
+    
+    if ax = 0 then
+      exit('0');
+    
+    if (ax >= 1e-6) and (ax < 1e12) then
+    begin
+      if ax >= 1 then
+        exit(x.ToString('0.##'))
+      else
+        exit(x.ToString('0.######'));
+    end;
+    
+    exit(x.ToString('G6'));
+  end;
+  
+  Result := x.ToString(fmt);
+end;
+
+procedure CheckMatrixFinite(A: Matrix);
+begin
+  if A = nil then
+    ArgumentNullError(ER_ARG_NULL, 'A');
+
+  for var i := 0 to A.RowCount - 1 do
+    for var j := 0 to A.ColCount - 1 do
+    begin
+      var v := A[i, j];
+      if double.IsNaN(v) or double.IsInfinity(v) then
+        ArgumentError(ER_MATRIX_HAS_NONFINITE, i, j);
+    end;
+end;
     
 //-----------------------------
 //           Vector
@@ -468,20 +554,53 @@ begin
   end;
 end;
 
+function Vector.Head(n: integer): Vector;
+begin
+  Result := Slice(0, n);
+end;
+
+function Vector.Slice(startIndex, count: integer): Vector;
+begin
+  if startIndex < 0 then
+    ArgumentError(ER_START_INDEX_NEGATIVE);
+
+  if count < 0 then
+    ArgumentError(ER_COUNT_NEGATIVE);
+
+  if startIndex + count > Length then
+    ArgumentError(ER_VECTOR_SLICE_OUT_OF_RANGE, startIndex, count, Length);
+
+  var res := new Vector(count);
+
+  for var i := 0 to count - 1 do
+    res[i] := Self[startIndex + i];
+
+  Result := res;
+end;
+
 function Vector.Clone: Vector;
 begin
   Result := new Vector(fdata);
+end;
+
+function Vector.ToString: string;
+begin
+  var fmt := fDefaultStringFormat;
+  Result := $'{fdata.Select(x -> FormatVectorValue(x, fmt))}';
 end;
 
 function Vector.Normalize: Vector;
 begin
   var sum := 0.0;
   for var i := 0 to Length - 1 do
-    sum += Self[i];
+    sum += Self[i] * Self[i];
 
   if sum > 0 then
+  begin
+    var norm := PABCSystem.Sqrt(sum);
     for var i := 0 to Length - 1 do
-      Self[i] /= sum;
+      Self[i] /= norm;
+  end;
 
   Result := Self;
 end;
@@ -640,6 +759,16 @@ begin
   Result := resultVec;
 end;
 
+function Vector.Indices(cond: real -> boolean): sequence of integer;
+begin
+  Result := fdata.Indices(cond);
+end;
+
+function Vector.Indices(cond: (real, integer) -> boolean): sequence of integer;
+begin
+  Result := fdata.Indices(cond);
+end;
+
 
 //-----------------------------
 //           Matrix
@@ -659,6 +788,38 @@ begin
   fdata := Copy(values);
 end;
 
+constructor Matrix.Create(values: array of Vector);
+begin
+  if values = nil then
+    ArgumentNullError(ER_VALUES_NULL);
+
+  var r := values.Length;
+  if r = 0 then
+    ArgumentError(ER_VALUES_EMPTY);
+
+  if values[0] = nil then
+    ArgumentNullError(ER_VECTOR_NULL);
+
+  var c := values[0].Length;
+  if c = 0 then
+    ArgumentError(ER_VECTOR_EMPTY);
+
+  for var i := 1 to r - 1 do
+  begin
+    if values[i] = nil then
+      ArgumentNullError(ER_VECTOR_NULL);
+
+    if values[i].Length <> c then
+      ArgumentError(ER_MATRIX_ROWS_HAVE_DIFFERENT_LENGTHS);
+  end;
+
+  fdata := new real[r, c];
+
+  for var i := 0 to r - 1 do
+    for var j := 0 to c - 1 do
+      fdata[i, j] := values[i][j];
+end;
+
 function Matrix.ToArray2D: array[,] of real;
 begin
   Result := Copy(fdata);
@@ -667,6 +828,31 @@ end;
 function Matrix.RowToArray(r: integer): array of real;
 begin
   Result := fdata.Row(r);
+end;
+
+function Matrix.Head(n: integer): Matrix;
+begin
+  Result := RowSlice(0, n);
+end;
+
+function Matrix.RowSlice(startIndex, count: integer): Matrix;
+begin
+  if startIndex < 0 then
+    ArgumentError(ER_START_INDEX_NEGATIVE);
+
+  if count < 0 then
+    ArgumentError(ER_COUNT_NEGATIVE);
+
+  if startIndex + count > RowCount then
+    ArgumentError(ER_MATRIX_ROW_SLICE_OUT_OF_RANGE, startIndex, count, RowCount);
+
+  var res := new Matrix(count, ColCount);
+
+  for var i := 0 to count - 1 do
+    for var j := 0 to ColCount - 1 do
+      res[i, j] := Self[startIndex + i, j];
+
+  Result := res;
 end;
 
 function Matrix.Clone: Matrix;
@@ -1094,7 +1280,6 @@ begin
 end;
 
 
-
 static function Matrix.operator +(A, B: Matrix): Matrix;
 begin
   CheckSameSize(A, B);
@@ -1243,6 +1428,10 @@ begin
   if RowCount = 0 then
     Error(ER_EMPTY_MATRIX);
 
+  for var i := 0 to n - 1 do
+    if (indices[i] < 0) or (indices[i] >= RowCount) then
+      ArgumentOutOfRangeError(ER_ROW_INDEX_OUT_OF_RANGE, indices[i], RowCount);
+
   var res := new Matrix(n, p);
 
   var src := Data;
@@ -1293,6 +1482,14 @@ begin
   Result := res;
 end;
 
+function Matrix.TakeRows(indices: sequence of integer): Matrix;
+begin
+  if indices = nil then
+    ArgumentNullError(ER_ARG_NULL, 'indices');
+  
+  Result := TakeRows(indices.ToArray);
+end;
+
 function Matrix.GetCol(j: integer): Vector;
 begin
   if (j < 0) or (j >= ColCount) then
@@ -1301,6 +1498,24 @@ begin
   Result := new Vector(RowCount);
   for var i := 0 to RowCount - 1 do
     Result[i] := fdata[i, j];
+end;
+
+function Matrix.Cols(colIndices: array of integer): array of Vector;
+begin
+  if colIndices = nil then
+    ArgumentNullError(ER_ARG_NULL, 'colIndices');
+  
+  SetLength(Result, colIndices.Length);
+  
+  for var i := 0 to colIndices.Length - 1 do
+  begin
+    var j := colIndices[i];
+    
+    if (j < 0) or (j >= ColCount) then
+      ArgumentOutOfRangeError(ER_COL_INDEX_OUT_OF_RANGE, j, ColCount);
+    
+    Result[i] := GetCol(j);
+  end;
 end;
 
 static function Matrix.Identity(n: integer): Matrix;
@@ -1353,6 +1568,14 @@ function Matrix.EigenSymmetric(tol: real; maxIter: integer): (Vector, Matrix);
 begin
   if RowCount <> ColCount then
     ArgumentError(ER_MATRIX_NOT_SQUARE);
+
+  CheckMatrixFinite(Self);
+
+  if tol <= 0 then
+    ArgumentOutOfRangeError(ER_EIGEN_TOL_INVALID);
+
+  if maxIter <= 0 then
+    ArgumentOutOfRangeError(ER_EIGEN_MAXITER_INVALID);
   
   if not IsSymmetric(tol) then
     ArgumentError(ER_MATRIX_NOT_SYMMETRIC);
@@ -1502,6 +1725,8 @@ begin
   var m := RowCount;
   var n := ColCount;
 
+  CheckMatrixFinite(Self);
+
   if k < 1 then
     ArgumentError(ER_PCA_K_INVALID);
 
@@ -1591,6 +1816,7 @@ end;
 
 // Helper
 function LUDecompose(A: Matrix): (Matrix, array of integer);
+const LU_PIVOT_EPS = 1e-12;
 begin
   if A.RowCount <> A.ColCount then
     ArgumentError(ER_MATRIX_NOT_SQUARE);
@@ -1614,7 +1840,10 @@ begin
         maxRow := i;
       end;
     
-    if maxVal < 1e-12 then
+    if maxVal = 0.0 then
+      Error(ER_MATRIX_SINGULAR);
+
+    if Abs(LU[maxRow, k]) <= LU_PIVOT_EPS * maxVal then
       Error(ER_MATRIX_SINGULAR);
     
     if maxRow <> k then
@@ -1726,6 +1955,9 @@ begin
   
   if b.Length <> A.RowCount then
     DimensionError(ER_VECTOR_SIZE_MISMATCH, b.Length, A.RowCount);
+
+  if not A.IsSymmetric() then
+    raise new MLNotSPDException(ER_MATRIX_NOT_SPD);
   
   var L := Cholesky(A);
 
@@ -1883,6 +2115,5 @@ begin
 
   Result := x;
 end;
-
 
 end.

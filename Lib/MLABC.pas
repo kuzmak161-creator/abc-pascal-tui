@@ -22,18 +22,51 @@ unit MLABC;
 // =============================================================
 
 // =============================================================
-// PIPELINES
+// КОНВЕЙЕРЫ
 //
-// DataFrame-based:
+// Табличные:
 //   DataPipeline
-//   UDataPipeline
+//   ClassificationDataPipeline
+//   RegressionDataPipeline
+//   ClusteringDataPipeline
 //
-// Matrix/Vector-based:
+// Матричные:
 //   MatrixPipeline
-//   UMatrixPipeline
+//   ClassificationMatrixPipeline
+//   RegressionMatrixPipeline
+//   ClusteringMatrixPipeline
 //
-// Оба варианта являются равноправными и используются
-// в зависимости от представления данных.
+// DataPipeline и MatrixPipeline используются как фасады
+// для построения специализированных конвейеров.
+// =============================================================
+
+// =============================================================
+// ПОЛИТИКА PREDICT
+//
+// 1. Классификация:
+//    • Для матричных моделей Predict возвращает метки классов
+//      в том виде, в каком они были поданы модели при обучении.
+//
+//    • ClassificationMatrixPipeline следует той же политике:
+//      Predict возвращает метки классов в том виде,
+//      в каком они были поданы вложенной модели при обучении.
+//
+//    • ClassificationDataPipeline работает с DataFrame, где целевой столбец
+//      часто является строковым. Поэтому внутри pipeline целевой столбец
+//      кодируется в целые числа, и Predict возвращает именно эти коды.
+//
+//    • PredictLabels возвращает строковые метки классов.
+//
+//    • Таким образом, различие естественно:
+//      матричные модели и ClassificationMatrixPipeline возвращают метки
+//      из пространства обучения модели, а ClassificationDataPipeline
+//      возвращает коды, построенные при кодировании целевого столбца.
+//
+// 2. Регрессия:
+//    • Predict возвращает вектор числовых предсказаний.
+//
+// 3. Кластеризация:
+//    • Predict и FitPredict возвращают номера кластеров.
 // =============================================================
 
 interface 
@@ -58,6 +91,8 @@ type
   Matrix = LinearAlgebraML.Matrix;
   
   Validation = ValidationML.Validation;
+  ValidationCurveResult = ValidationML.ValidationCurveResult;
+  LearningCurveResult = ValidationML.LearningCurveResult;
   GridSearch = ValidationML.GridSearch;
   
   Metrics = MetricsABC.Metrics;
@@ -65,19 +100,30 @@ type
   RegressionMetrics = MetricsABC.RegressionMetrics;
   ClusteringMetrics = MetricsABC.ClusteringMetrics;
   ConfusionMatrix = MetricsABC.ConfusionMatrix;
+  MatrixNormalization = MetricsABC.MatrixNormalization;
   
   DataPipeline = MLPipelineABC.DataPipeline;
+  ClassificationDataPipeline = MLPipelineABC.ClassificationDataPipeline;
+  RegressionDataPipeline = MLPipelineABC.RegressionDataPipeline;
+  ClusteringDataPipeline = MLPipelineABC.ClusteringDataPipeline;
   
   DataFrame = DataFrameABC.DataFrame;
+  ODSReader = DataFrameABC.ODSReader;
   DataFrameCursor = DataFrameABCCore.DataFrameCursor;
+  DataValue = DataFrameABCCore.DataValue;
   ColumnType = DataFrameABCCore.ColumnType;
+  Column = DataFrameABCCore.Column;
+  DatePartKind = DataFrameABC.DatePartKind;
   
   Statistics = DataFrameABC.Statistics;
   CsvLoader = DataFrameABC.CsvLoader;
+  CsvSaver = DataFrameABC.CsvSaver;
   JoinKind = DataFrameABC.JoinKind;
   GroupView = DataFrameABC.GroupView;
+  EncodedTarget = DataAdapters.EncodedTarget;
   
   IProbabilisticClassifier = MLCoreABC.IProbabilisticClassifier;
+  IClassifier = MLCoreABC.IClassifier;
   IRegressor = MLCoreABC.IRegressor;
 
   StandardScaler = MLModelsABC.StandardScaler;
@@ -92,6 +138,11 @@ type
   
   Activations = MLModelsABC.Activations;
   MatrixPipeline = MLModelsABC.MatrixPipeline;
+  ClassificationMatrixPipeline = MLModelsABC.ClassificationMatrixPipeline;
+  RegressionMatrixPipeline = MLModelsABC.RegressionMatrixPipeline;
+  ClusteringMatrixPipeline = MLModelsABC.ClusteringMatrixPipeline;
+  LinearDecisionBoundary = MLModelsABC.LinearDecisionBoundary;
+  LinearRegressionLine = MLModelsABC.LinearRegressionLine;
   
   LinearRegression = MLModelsABC.LinearRegression;
   LogisticRegression = MLModelsABC.LogisticRegression;
@@ -100,12 +151,14 @@ type
   ElasticNet = MLModelsABC.ElasticNet;
   DecisionTreeClassifier = MLModelsABC.DecisionTreeClassifier;
   DecisionTreeRegressor = MLModelsABC.DecisionTreeRegressor;
+  DecisionTreeView = MLModelsABC.DecisionTreeView;
   RandomForestRegressor = MLModelsABC.RandomForestRegressor;
   RandomForestClassifier = MLModelsABC.RandomForestClassifier;
   GradientBoostingRegressor = MLModelsABC.GradientBoostingRegressor;
   GradientBoostingClassifier = MLModelsABC.GradientBoostingClassifier;
   KNNClassifier = MLModelsABC.KNNClassifier;
   KNNRegressor = MLModelsABC.KNNRegressor;
+  NeighborInfo = MLModelsABC.NeighborInfo;
   KMeans = MLModelsABC.KMeans;
   DBSCAN = MLModelsABC.DBSCAN;
   
@@ -122,23 +175,32 @@ type
   IPreprocessor = PreprocessorABC.IPreprocessor;
   OrdinalEncoder = PreprocessorABC.OrdinalEncoder;
   OneHotEncoder = PreprocessorABC.OneHotEncoder;
+  DateTimeComponentsEncoder = PreprocessorABC.DateTimeComponentsEncoder;
+  DateTimeUnit = PreprocessorABC.DateTimeUnit;
+  DateTimeOrdinalEncoder = PreprocessorABC.DateTimeOrdinalEncoder;
+  DateTimeCyclicEncoder = PreprocessorABC.DateTimeCyclicEncoder;
   ImputeStrategy = PreprocessorABC.ImputeStrategy;
   Imputer = PreprocessorABC.Imputer;
   
   Datasets = MLDatasets.Datasets;
   Dataset = MLDatasets.Dataset;
+  LabelEncoder = MLDatasets.LabelEncoder;
+  TaskType = MLDatasets.TaskType;
   
   IModel = MLCoreABC.IModel;
-  ISupervisedModel = MLCoreABC.ISupervisedModel;
   IUnsupervisedModel = MLCoreABC.IUnsupervisedModel;
   
-  UMatrixPipeline = MLModelsABC.UMatrixPipeline;
-  UDataPipeline = MLPipelineABC.UDataPipeline;
   TaskKind = MLPipelineABC.TaskKind;
   
   AggregationKind = DataFrameABC.AggregationKind;
   
 const
+  ctInt = ColumnType.ctInt;
+  ctFloat = ColumnType.ctFloat;
+  ctStr = ColumnType.ctStr;
+  ctBool = ColumnType.ctBool;
+  ctDateTime = ColumnType.ctDateTime;
+
   akMean = AggregationKind.akMean;
   akMin = AggregationKind.akMin;
   akMax = AggregationKind.akMax;
@@ -151,12 +213,22 @@ const
   jkLeft = JoinKind.jkLeft;
   jkRight = JoinKind.jkRight;
   jkFull = JoinKind.jkFull;
-
-  /// Преобразует вектор меток классов в массив целых чисел.
-  /// Значения округляются функцией Round, чтобы устранить
-  ///   возможные небольшие численные ошибки 
-  function LabelsToInts(y: Vector): array of integer;
   
+  dpYear = DatePartKind.dpYear;
+  dpMonth = DatePartKind.dpMonth;
+  dpDay = DatePartKind.dpDay;
+  dpHour = DatePartKind.dpHour;
+  dpMinute = DatePartKind.dpMinute;
+  dpSecond = DatePartKind.dpSecond;
+  dpDayOfWeek = DatePartKind.dpDayOfWeek;
+  dpTimeOfDay = DatePartKind.dpTimeOfDay;
+  dpDate = DatePartKind.dpDate;
+  
+  dtuDays = DateTimeUnit.dtuDays;
+  dtuHours = DateTimeUnit.dtuHours;
+  dtuMinutes = DateTimeUnit.dtuMinutes;
+  dtuSeconds = DateTimeUnit.dtuSeconds;
+
   /// Кодирует строковые метки классов в целочисленные индексы.
   /// Каждому уникальному значению присваивается номер 0,1,2,...
   /// Порядок кодирования соответствует порядку первого появления меток.
@@ -164,14 +236,18 @@ const
   /// Предполагается, что входные данные уже очищены от пропущенных значений.
   function EncodeLabels(labels: array of string): array of integer;
 
+  /// Краткое создание даты без времени.
+  function DT(year, month, day: integer): System.DateTime;
+
+  /// Краткое создание даты и времени.
+  function DT(year, month, day, hour, minute, second: integer): System.DateTime;
+
   
 implementation
 
-function LabelsToInts(y: Vector): array of integer;
-begin
-  Result := MLUtilsABC.LabelsToInts(y);
-end;
-
 function EncodeLabels(labels: array of string): array of integer := MLUtilsABC.EncodeLabels(labels);
+function DT(year, month, day: integer): System.DateTime := DataFrameABC.DT(year, month, day);
+function DT(year, month, day, hour, minute, second: integer): System.DateTime := DataFrameABC.DT(year, month, day, hour, minute, second);
   
 end.
+

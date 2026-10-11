@@ -7,22 +7,24 @@
 unit PlotML;
 
 {$reference %GAC%\InteractiveDataDisplay.WPF.dll}
-{$reference 'PresentationFramework.dll'}
-{$reference 'WindowsBase.dll'}
-{$reference 'PresentationCore.dll'}
+{$platform WPF}
 
 interface
 
 uses System,
      System.Windows,
      System.Windows.Controls,
+     System.Windows.Data,
      System.Windows.Media,
      System.Windows.Shapes,
      System.Threading,
      System.Windows.Threading,
      System.Text,
      InteractiveDataDisplay.WPF,
-     LinearAlgebraML;
+     LinearAlgebraML,
+     ValidationML,
+     MetricsABC,
+     MLExceptions;
      
 type
   ApplicationWPF = System.Windows.Application;
@@ -31,6 +33,7 @@ type
   ChartWPF = InteractiveDataDisplay.WPF.Chart;
   LineGraphWPF = InteractiveDataDisplay.WPF.LineGraph;
   MarkerGraphWPF = InteractiveDataDisplay.WPF.CircleMarkerGraph;
+  BarGraphWPF = InteractiveDataDisplay.WPF.BarGraph;
   PlotWPF = InteractiveDataDisplay.WPF.Plot;
   BrushWPF = System.Windows.Media.SolidColorBrush;
   Colors = System.Windows.Media.Colors;
@@ -42,10 +45,14 @@ const DefaultColor = default(ColorWPF);
   
 type
   MarkerType = (Circle, Box, Triangle, Diamond, Cross);
+  MatrixNormalization = MetricsABC.MatrixNormalization;
 
+  /// Палитра цветов для последовательного выбора серий на графиках.
   Palette = class
   public
+    /// Цвета палитры в порядке использования.
     Colors: array of Color;
+    /// Создаёт палитру из заданного набора цветов.
     constructor Create(params c: array of Color);
   end;
   
@@ -59,14 +66,21 @@ type
     static procedure InitPalettes;
   
   public
+    /// Возвращает стандартную палитру модуля.
     static function &Default: Palette;
+    /// Возвращает мягкую пастельную палитру.
     static function Pastel: Palette;
+    /// Возвращает тёмную контрастную палитру.
     static function Dark: Palette;
+    /// Возвращает яркую палитру для нескольких серий.
     static function Bright: Palette;
+    /// Возвращает приглушённую палитру.
     static function Muted: Palette;
   
+    /// Регистрирует пользовательскую палитру по имени.
     static procedure Register(name: string; p: Palette);
     
+    /// Возвращает палитру по имени.
     static function Get(name: string): Palette;
   end;
   
@@ -77,6 +91,7 @@ type
     parentGrid: GridWPF;
     row,col: integer;
     chart: ChartWPF;
+    visual: UIElement;
 
     palette: Palette;
     paletteIndex: integer := 0;
@@ -85,47 +100,149 @@ type
     procedure EnsureChart;
     
     procedure SetTitle(s: string);
+    procedure SetXLabel(s: string);
+    procedure SetYLabel(s: string);
   public
+    /// Создаёт ячейку в сетке составной фигуры.
     constructor Create(g: GridWPF; r,c: integer);
 
+    /// Возвращает i-й цвет текущей палитры.
+    function PaletteColor(i: integer): ColorWPF;
+
+    /// Рисует линейный график по массивам x и y.
     procedure LineGraph(x, y: array of real; color: ColorWPF := DefaultColor; 
       thickness: real := 2; legend: string := nil);
+    /// Рисует прямую вида y = k*x + b.
+    procedure Line(k, b: real; color: ColorWPF := DefaultColor;
+      thickness: real := 2; legend: string := nil);
+    /// Рисует прямую вида A*x + B*y + C = 0.
+    procedure Line(A, B, C: real; color: ColorWPF := DefaultColor;
+      thickness: real := 2; legend: string := nil);
+    /// Рисует одну точку на плоскости.
+    procedure Point(x, y: real; color: ColorWPF := DefaultColor;
+      size: real := 8; marker: MarkerType := MarkerType.Circle; legend: string := nil);
+    /// Строит диаграмму рассеяния по массивам x и y.
     procedure Points(x, y: array of real; color: ColorWPF := DefaultColor; 
-      size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil);
+      size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil;
+      tooltips: array of string := nil);
+    /// Строит диаграмму рассеяния по массиву двумерных точек.
+    procedure Points(points: array of Vector; color: ColorWPF := DefaultColor;
+      size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil;
+      tooltips: array of string := nil);
+    /// Строит диаграмму рассеяния с раскраской по целочисленным меткам.
     procedure Points(x, y: array of real; labels: array of integer;
-      size: real := 6; marker: MarkerType := MarkerType.Circle);  
+      size: real := 6; marker: MarkerType := MarkerType.Circle;
+      classNames: array of string := nil);  
+    /// Строит гистограмму значений.
     procedure Hist(x: array of real; bins: integer := 0; 
-      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil);
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil);
+    /// Строит гистограмму целочисленных значений.
+    procedure Hist(x: array of integer; bins: integer := 0;
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil);
+    /// Строит столбчатую диаграмму по значениям y.
+    procedure Bar(y: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по целочисленным значениям y.
+    procedure Bar(y: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по массивам x и y.
+    procedure Bar(x, y: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по x и целочисленным значениям y.
+    procedure Bar(x: array of real; y: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит горизонтальную столбчатую диаграмму с текстовыми подписями.
+    procedure HorizontalBar(labels: array of string; values: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.75; alpha: real := 0.85; legend: string := nil);
+    /// Строит горизонтальную столбчатую диаграмму по целочисленным значениям.
+    procedure HorizontalBar(labels: array of string; values: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.75; alpha: real := 0.85; legend: string := nil);
+    /// Строит тепловую карту для числовой матрицы.
     procedure Heatmap(m: array[,] of real);
+    /// Отображает одно изображение, записанное в виде плоского массива.
+    procedure Image(values: array of real; width, height: integer; invert: boolean := false);
+    /// Отображает сетку изображений из строк матрицы X.
+    procedure ImageGrid(X: Matrix; width, height: integer; startRow: integer := 0;
+      count: integer := 20; cols: integer := 5; spacing: real := 0.1;
+      normalize: boolean := false; invert: boolean := false);
       
 // --- Vector overloads
+    /// Рисует линейный график по векторам x и y.
     procedure LineGraph(x, y: Vector; color: ColorWPF := DefaultColor;
       thickness: real := 2; legend: string := nil);
+    /// Строит диаграмму рассеяния по векторам x и y.
     procedure Points(x, y: Vector; color: ColorWPF := DefaultColor;
-      size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil);
+      size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil;
+      tooltips: array of string := nil);
+    /// Строит диаграмму рассеяния по векторам x и y с раскраской по меткам.
     procedure Points(x, y: Vector; labels: array of integer;
-      size: real := 6; marker: MarkerType := MarkerType.Circle);
+      size: real := 6; marker: MarkerType := MarkerType.Circle;
+      classNames: array of string := nil);
+    /// Строит гистограмму значений вектора.
     procedure Hist(x: Vector; bins: integer := 0;
-      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil);
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil);
+    /// Строит столбчатую диаграмму по значениям вектора y.
+    procedure Bar(y: Vector; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по векторам x и y.
+    procedure Bar(x, y: Vector; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит горизонтальную столбчатую диаграмму по вектору значений.
+    procedure HorizontalBar(labels: array of string; values: Vector; color: ColorWPF := DefaultColor;
+      width: real := 0.75; alpha: real := 0.85; legend: string := nil);
+    /// Отображает одно изображение из вектора пикселей.
+    procedure Image(values: Vector; width, height: integer; invert: boolean := false);
       
+    /// Строит карту решений классификатора на двумерной плоскости.
     procedure Surface(x1, x2: array of real; nx, ny: integer; f: Matrix -> array of integer; pal: PlotML.Palette := nil);      
       
+    /// Строит тепловую карту для матрицы.
     procedure Heatmap(m: Matrix);
+    /// Отображает одну ячейку тепловой карты с числом или подписью.
     procedure HeatCell(value, minValue, maxValue: real; text: string := nil);
+    /// Отображает матрицу ошибок по целочисленной таблице частот.
+    procedure ConfusionMatrix(m: array[,] of integer; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
+    /// Отображает матрицу ошибок по вещественной матрице.
+    procedure ConfusionMatrix(m: Matrix; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
+    /// Отображает матрицу ошибок по объекту ConfusionMatrix.
+    procedure ConfusionMatrix(cm: MetricsABC.ConfusionMatrix; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
     
+    /// Добавляет текстовую подпись в область графика.
     procedure Text(s: string; x: real := 0.5; y: real := 0.5);
     
+    /// Устанавливает палитру цветов для данной ячейки.
     procedure SetPalette(p: PaletteWPF);
-    procedure XLabel(s: string);
-    procedure YLabel(s: string);
+    /// Скрывает ось X.
+    procedure HideXAxis;
+    /// Скрывает ось Y.
+    procedure HideYAxis;
+    /// Скрывает сетку графика.
+    procedure HideGrid;
+    /// Скрывает оси и сетку.
+    procedure HideAxesAndGrid;
     
+    /// Устанавливает границы области отображения по обеим осям.
     procedure Limits(xmin, xmax, ymin, ymax: real);
+    /// Устанавливает границы по оси X.
     procedure XLim(xmin,xmax: real);
+    /// Устанавливает границы по оси Y.
     procedure YLim(ymin,ymax: real);
     
+    /// Очищает содержимое ячейки.
     procedure Clear;
     
+    /// Заголовок ячейки.
     property Title: string write SetTitle;
+    /// Подпись оси X.
+    property XLabel: string write SetXLabel;
+    /// Подпись оси Y.
+    property YLabel: string write SetYLabel;
   end;
 
   Figure = class
@@ -133,7 +250,9 @@ type
     grid: GridWPF;
     cells: array[,] of Cell;
   public
+    /// Создаёт сетку графиков из rows строк и cols столбцов.
     constructor Create(rows,cols: integer);
+    /// Доступ к ячейке фигуры по индексам строки и столбца.
     property Item[r,c: integer]: Cell read cells[r,c]; default;
   end;
 
@@ -143,23 +262,45 @@ type
 
     static function CreateLineSeries(x,y: array of real; c: Color): LineGraphWPF;
     static function CreatePointSeries(x, y: array of real; 
-      color: ColorWPF; size: real; marker: MarkerType): MarkerGraphWPF;
+      color: ColorWPF; size: real; marker: MarkerType;
+      tooltips: array of string): MarkerGraphWPF;
+    static function CreateXYTooltipTemplate: DataTemplate;
     
     static procedure DrawLine(chart: ChartWPF; x, y: array of real;
+      color: ColorWPF; thickness: real; legend: string);
+    static procedure DrawImplicitLine(chart: ChartWPF; A, B, C: real;
       color: ColorWPF; thickness: real; legend: string);
       
     static procedure DrawText(chart: ChartWPF; s: string; x, y: real);  
   
     static procedure DrawPoints(chart: ChartWPF; x, y: array of real;
-      color: ColorWPF; size: real; marker: MarkerType; legend: string);
+      color: ColorWPF; size: real; marker: MarkerType; legend: string;
+      tooltips: array of string);
+
+    static procedure RefreshLegend(chart: ChartWPF;
+      master: InteractiveDataDisplay.WPF.PlotBase);
       
     static procedure DrawHeatmap(chart: ChartWPF; m: array[,] of real; names: array of string := nil);  
+
+    static function CreateConfusionMatrixView(m: array[,] of real; classNames: array of string;
+      title: string; xlabel: string; ylabel: string; percentValues: boolean := false;
+      sortClassNames: boolean := false): UIElement;
+    static function CreateImageGridView(X: Matrix; width, height, startRow, count, cols: integer;
+      spacing: real; normalize, invert: boolean): UIElement;
     
     static procedure DrawHist(chart: ChartWPF; x: array of real;
       bins: integer; color: ColorWPF; alpha: real; legend: string);
+    static procedure DrawHist(chart: ChartWPF; x, edges: array of real;
+      color: ColorWPF; alpha: real; legend: string);
       
     static procedure DrawHistMany(chart: ChartWPF; arrays: array of array of real;
       bins: integer; colors: array of ColorWPF; alpha: real; legends: array of string);
+
+    static procedure DrawBar(chart: ChartWPF; x, y: array of real;
+      color: ColorWPF; width: real; alpha: real; legend: string);
+
+    static procedure DrawHorizontalBar(chart: ChartWPF; labels: array of string; values: array of real;
+      color: ColorWPF; width: real; alpha: real; legend: string);
       
     static procedure DrawSurface(chart: ChartWPF; labels: array of integer; 
       nx, ny: integer; xmin, xmax, ymin, ymax: real; pal: Palette);
@@ -167,81 +308,236 @@ type
     static function MakeGrid(xmin, xmax, ymin, ymax: real; nx, ny: integer): Matrix;
       
     static procedure SetTitle(s: string);
+    static procedure SetXLabel(s: string);
+    static procedure SetYLabel(s: string);
   public
+    /// Добавляет готовую визуальную серию на график.
     static procedure AddSeries(chart: ChartWPF; series: UIElement);
 
+    /// Возвращает i-й цвет активной палитры.
+    static function PaletteColor(i: integer): ColorWPF;
+
+    /// Рисует линейный график по массивам x и y.
     static procedure LineGraph(x, y: array of real;
       color: ColorWPF := DefaultColor; thickness: real := 2; legend: string := nil);
+    /// Рисует прямую вида y = k*x + b.
+    static procedure Line(k, b: real;
+      color: ColorWPF := DefaultColor; thickness: real := 2; legend: string := nil);
+    /// Рисует прямую вида A*x + B*y + C = 0.
+    static procedure Line(A, B, C: real;
+      color: ColorWPF := DefaultColor; thickness: real := 2; legend: string := nil);
+    /// Рисует одну точку на плоскости.
+    static procedure Point(x, y: real;
+      color: ColorWPF := DefaultColor; size: real := 8; marker: MarkerType := MarkerType.Circle; legend: string := nil);
       
+    /// Строит диаграмму рассеяния по массивам x и y.
     static procedure Points(x, y: array of real; 
-      color: ColorWPF := DefaultColor; size: real := 6; marker: MarkerType := MarkerType.Circle; legend: string := nil);
-      
-    static procedure Points(x, y: array of real;
-      labels: array of integer; color: ColorWPF := DefaultColor; size: real := 6; marker: MarkerType := MarkerType.Circle);
-      
-    static procedure Hist(x: array of real; bins: integer := 0;
-      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil);
+      color: ColorWPF := DefaultColor; size: real := 6; marker: MarkerType := MarkerType.Circle;
+      legend: string := nil; tooltips: array of string := nil);
 
+    /// Строит диаграмму рассеяния по массиву двумерных точек.
+    static procedure Points(points: array of Vector;
+      color: ColorWPF := DefaultColor; size: real := 6; marker: MarkerType := MarkerType.Circle;
+      legend: string := nil; tooltips: array of string := nil);
+      
+    /// Строит диаграмму рассеяния с раскраской по целочисленным меткам.
+    static procedure Points(x, y: array of real;
+      labels: array of integer; color: ColorWPF := DefaultColor; size: real := 6;
+      marker: MarkerType := MarkerType.Circle; classNames: array of string := nil);
+      
+    /// Строит гистограмму значений.
+    static procedure Hist(x: array of real; bins: integer := 0;
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil);
+    /// Строит гистограмму целочисленных значений.
+    static procedure Hist(x: array of integer; bins: integer := 0;
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil);
+      
+    /// Строит столбчатую диаграмму по значениям y.
+    static procedure Bar(y: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по целочисленным значениям y.
+    static procedure Bar(y: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+      
+    /// Строит столбчатую диаграмму по массивам x и y.
+    static procedure Bar(x, y: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+    /// Строит столбчатую диаграмму по x и целочисленным значениям y.
+    static procedure Bar(x: array of real; y: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil);
+      
+    /// Строит горизонтальную столбчатую диаграмму с текстовыми подписями.
+    static procedure HorizontalBar(labels: array of string; values: array of real; color: ColorWPF := DefaultColor;
+      width: real := 0.75; alpha: real := 0.85; legend: string := nil);
+    /// Строит горизонтальную столбчатую диаграмму по целочисленным значениям.
+    static procedure HorizontalBar(labels: array of string; values: array of integer; color: ColorWPF := DefaultColor;
+      width: real := 0.75; alpha: real := 0.85; legend: string := nil);
+      
+    /// Отображает одно изображение, записанное в виде плоского массива.
+    static procedure Image(values: array of real; width, height: integer; invert: boolean := false);
+    /// Отображает сетку изображений из строк матрицы X.
+    static procedure ImageGrid(X: Matrix; width, height: integer; startRow: integer := 0;
+      count: integer := 20; cols: integer := 5; spacing: real := 0.1;
+      normalize: boolean := false; invert: boolean := false);
+
+    /// Строит несколько гистограмм на одном графике.
     static procedure HistMany(arrays: array of array of real; bins: integer := 0;
       colors: array of ColorWPF := nil; alpha: real := 0.7; legend: array of string := nil);
       
-    static procedure PairPlot(X: array[,] of real; labels: array of integer; names: array of string);
+    /// Строит матрицу попарных диаграмм признаков.
+    static procedure PairPlot(X: array[,] of real; names: array of string := nil; maxPoints: integer := 2000);
+    /// Строит матрицу попарных диаграмм с раскраской по числовым значениям.
+    static procedure PairPlot(X: array[,] of real; values: array of real; names: array of string := nil; bins: integer := 5; maxPoints: integer := 2000);
+    /// Строит матрицу попарных диаграмм с раскраской по меткам классов.
+    static procedure PairPlot(X: array[,] of real; labels: array of integer; names: array of string; maxPoints: integer := 2000);
     
+    /// Строит тепловую карту для числовой матрицы.
     static procedure Heatmap(m: array[,] of real);
+    /// Строит тепловую карту с подписями строк и столбцов.
     static procedure Heatmap(m: array[,] of real; names: array of string);
+    /// Отображает матрицу ошибок по целочисленной таблице частот.
+    static procedure ConfusionMatrix(m: array[,] of integer; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
+    /// Отображает матрицу ошибок по вещественной матрице.
+    static procedure ConfusionMatrix(m: Matrix; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
+    /// Отображает матрицу ошибок по объекту ConfusionMatrix.
+    static procedure ConfusionMatrix(cm: MetricsABC.ConfusionMatrix; classNames: array of string := nil;
+      normalize: MatrixNormalization := MatrixNormalization.None; sortClassNames: boolean := false);
     
+    /// Строит валидационную кривую по результату кросс-валидации.
+    static procedure ValidationCurve(
+      curve: ValidationML.ValidationCurveResult;
+      xLabel: string := nil;
+      yLabel: string := nil;
+      title: string := nil;
+      trainColor: ColorWPF := DefaultColor;
+      validationColor: ColorWPF := DefaultColor;
+      markerSize: real := 8;
+      thickness: real := 2);
+    /// Строит кривую обучения по результату кросс-валидации.
+    static procedure LearningCurve(
+      curve: ValidationML.LearningCurveResult;
+      xLabel: string := nil;
+      yLabel: string := nil;
+      title: string := nil;
+      trainColor: ColorWPF := DefaultColor;
+      validationColor: ColorWPF := DefaultColor;
+      markerSize: real := 8;
+      thickness: real := 2);
+    
+    /// Строит карту решений по уже вычисленным меткам на сетке.
     static procedure Surface(labels: array of integer; nx, ny: integer; xmin, xmax, ymin, ymax: real; pal: PlotML.Palette := nil);
 
+    /// Строит карту решений по функции предсказания двумерного классификатора.
     static procedure Surface(x1, x2: array of real; nx, ny: integer; f: Matrix -> array of integer; pal: PlotML.Palette := nil);
 
 // с матрицами - векторами   
    
+    /// Рисует линейный график по векторам x и y.
     static procedure LineGraph(x, y: Vector;
       color: ColorWPF := DefaultColor; thickness: real := 2; legend: string := nil) 
       := LineGraph(x.Data, y.Data, color, thickness, legend);
     
+    /// Строит диаграмму рассеяния по векторам x и y.
     static procedure Points(x, y: Vector; color: ColorWPF := DefaultColor; size: real := 6;
-      marker: MarkerType := MarkerType.Circle; legend: string := nil)
-      := Points(x.Data, y.Data, color, size, marker, legend);
+      marker: MarkerType := MarkerType.Circle; legend: string := nil; tooltips: array of string := nil)
+      := Points(x.Data, y.Data, color, size, marker, legend, tooltips);
     
+    /// Строит диаграмму рассеяния по векторам x и y с раскраской по меткам.
     static procedure Points(x, y: Vector;
       labels: array of integer; color: ColorWPF := DefaultColor; size: real := 6;
-      marker: MarkerType := MarkerType.Circle) 
-      := Points(x.Data, y.Data, labels, color, size, marker);
+      marker: MarkerType := MarkerType.Circle; classNames: array of string := nil) 
+      := Points(x.Data, y.Data, labels, color, size, marker, classNames);
     
+    /// Строит гистограмму значений вектора.
     static procedure Hist(x: Vector; bins: integer := 0;
-      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil)
-      := Hist(x.Data, bins, color, alpha, legend);
+      color: ColorWPF := DefaultColor; alpha: real := 0.7; legend: string := nil;
+      edges: System.Array := nil)
+      := Hist(x.Data, bins, color, alpha, legend, edges);
       
-    static procedure PairPlot(X: Matrix; labels: array of integer; names: array of string)
-      := PairPlot(X.Data, labels, names);
+    /// Строит столбчатую диаграмму по значениям вектора y.
+    static procedure Bar(y: Vector; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil)
+      := Bar(y.Data, color, width, alpha, legend);
+      
+    /// Строит столбчатую диаграмму по векторам x и y.
+    static procedure Bar(x, y: Vector; color: ColorWPF := DefaultColor;
+      width: real := 0.8; alpha: real := 0.85; legend: string := nil)
+      := Bar(x.Data, y.Data, color, width, alpha, legend);
+
+    /// Строит горизонтальную столбчатую диаграмму по вектору значений.
+    static procedure HorizontalBar(labels: array of string; values: Vector;
+      color: ColorWPF := DefaultColor; width: real := 0.75;
+      alpha: real := 0.85; legend: string := nil)
+      := HorizontalBar(labels, values.Data, color, width, alpha, legend);
+
+    /// Отображает одно изображение из вектора пикселей.
+    static procedure Image(values: Vector; width, height: integer; invert: boolean := false)
+      := Image(values.Data, width, height, invert);
+      
+    /// Строит матрицу попарных диаграмм признаков.
+    static procedure PairPlot(X: Matrix; names: array of string := nil; maxPoints: integer := 2000)
+      := PairPlot(X.Data, names, maxPoints);
+    /// Строит матрицу попарных диаграмм с раскраской по числовым значениям.
+    static procedure PairPlot(X: Matrix; values: array of real; names: array of string := nil; bins: integer := 5; maxPoints: integer := 2000)
+      := PairPlot(X.Data, values, names, bins, maxPoints);
+    /// Строит матрицу попарных диаграмм с раскраской по меткам классов.
+    static procedure PairPlot(X: Matrix; labels: array of integer; names: array of string; maxPoints: integer := 2000)
+      := PairPlot(X.Data, labels, names, maxPoints);
     
+    /// Строит тепловую карту для матрицы.
     static procedure Heatmap(m: Matrix) := Heatmap(m.Data);
+    /// Строит тепловую карту для матрицы с подписями.
     static procedure Heatmap(m: Matrix; names: array of string) := Heatmap(m.Data, names);
     
     
+    /// Создаёт составную фигуру из нескольких ячеек.
     static function Grid(rows,cols: integer): Figure;
 
+    /// Устанавливает палитру по умолчанию для новых серий.
     static procedure SetPalette(p: PaletteWPF);
     
+    /// Обеспечивает наличие осей на графике.
     static procedure EnsureAxes(chart: ChartWPF);
    
+    /// Скрывает ось X.
+    static procedure HideXAxis;
+    /// Скрывает ось Y.
+    static procedure HideYAxis;
+    /// Скрывает сетку графика.
+    static procedure HideGrid;
+    /// Скрывает оси и сетку.
+    static procedure HideAxesAndGrid;
+    /// Устанавливает границы области отображения по обеим осям.
     static procedure Limits(xmin,xmax,ymin,ymax: real);
+    /// Устанавливает границы по оси X.
     static procedure XLim(xmin,xmax: real);
+    /// Устанавливает границы по оси Y.
     static procedure YLim(ymin,ymax: real);
-    static procedure XLabel(s: string);
-    static procedure YLabel(s: string);
+    /// Одним вызовом задаёт заголовок и подписи осей.
     static procedure SetLabels(title: string := ''; xlabel: string := ''; ylabel: string := '');
     
+    /// Очищает текущее окно визуализации.
     static procedure Clear;
     
+    /// Сохраняет текущее окно визуализации в файл.
     static procedure Save(filename: string);
 
+    /// Возвращает текстовое дерево визуальных WPF-элементов для отладки.
     static function DebugVisualTree: string;
     
+    /// Заголовок текущего графика.
     static property Title: string write SetTitle;
+    /// Подпись оси X текущего графика.
+    static property XLabel: string write SetXLabel;
+    /// Подпись оси Y текущего графика.
+    static property YLabel: string write SetYLabel;
   end;
 
+  /// Внутренний график гистограммы.
   HistogramPlot = class(PlotWPF)
   private
     fBins: List<Polygon>;
@@ -254,17 +550,63 @@ type
     MaxValue: real := real.NaN;
    
   public
+    /// Создаёт пустой график гистограммы.
     constructor Create;
   
+    /// Загружает данные для построения гистограммы.
     procedure SetData(x: array of real);
+    /// Загружает данные и заданные границы интервалов.
+    procedure SetData(x, edges: array of real);
   
+    /// Цвет столбцов гистограммы.
     property Color: ColorWPF read fColor write fColor;
+    /// Прозрачность столбцов гистограммы.
     property Alpha: real read fAlpha write fAlpha;
+    /// Число интервалов гистограммы.
     property BinsCount: integer read fBinsCount write fBinsCount;
+    /// Текстовое описание серии.
     property Description: string read fDescription write fDescription;
+    /// Максимальная высота столбца.
     property MaxCount: integer read fMaxCount;
   end;
 
+  /// Внутренний график неявно заданной прямой.
+  ImplicitLinePlot = class(PlotWPF)
+  private
+    fA, fB, fC: real;
+    fStroke: BrushWPF;
+    fStrokeThickness: real;
+    fDescription: string;
+
+    function IsFinite(x: real): boolean;
+    procedure OnPlotTransformChanged(sender: object; e: EventArgs);
+  protected
+    function ComputeBounds: InteractiveDataDisplay.WPF.DataRect; override;
+    procedure OnRender(dc: DrawingContext); override;
+  public
+    /// Создаёт график прямой A*x + B*y + C = 0.
+    constructor Create(A, B, C: real; color: ColorWPF; thickness: real);
+
+    /// Текстовое описание серии.
+    property Description: string read fDescription write fDescription;
+  end;
+
+  /// Внутренний график горизонтальной столбчатой диаграммы.
+  HorizontalBarPlot = class(PlotWPF)
+  private
+    fElements: List<UIElement> := new List<UIElement>;
+    fDescription: string;
+  public
+    /// Создаёт пустой график столбчатой диаграммы.
+    constructor Create;
+    /// Загружает данные для горизонтальной столбчатой диаграммы.
+    procedure SetData(labels: array of string; values: array of real;
+      color: ColorWPF; width: real; alpha: real);
+    /// Текстовое описание серии.
+    property Description: string read fDescription write fDescription;
+  end;
+
+  /// Внутренний график тепловой карты.
   HeatmapPlot = class(PlotWPF)
   private
     fCells: List<Polygon> := new List<Polygon>;
@@ -275,18 +617,24 @@ type
     function Clamp01(x: real): real;
     function ColorForValue(v: real): ColorWPF;
   public
+    /// Создаёт пустую тепловую карту.
     constructor Create;
 
+    /// Загружает матрицу значений для тепловой карты.
     procedure SetData(m: array[,] of real);
 
+    /// Минимальное значение в текущей матрице.
     property MinValue: real read fMinValue;
+    /// Максимальное значение в текущей матрице.
     property MaxValue: real read fMaxValue;
   end;
   
+  /// Внутренний график карты решений классификатора.
   SurfacePlot = class(PlotWPF)
   private
     fRects: List<Polygon> := new List<Polygon>;
   public
+    /// Загружает метки классов на прямоугольной сетке.
     procedure SetData(labels: array of integer;
       nx, ny: integer; xmin, xmax, ymin, ymax: real; pal: Palette);
   end;
@@ -304,6 +652,10 @@ var
   paletteDict: Dictionary<string,Palette>;
   currentPalette: Palette;
   rootPaletteIndex: integer := 0;
+  rootTitleBlock: TextBlock;
+  rootXLabelBlock: TextBlock;
+  rootYLabelBlock: TextBlock;
+  gridMode := false;
   
 static function Palettes.&Default: Palette := paletteDict['default'];
 static function Palettes.Pastel: Palette := paletteDict['pastel'];
@@ -409,6 +761,40 @@ begin
   Result := c;
 end;
 
+function ColorFromPalette(p: PaletteWPF; i: integer): ColorWPF;
+begin
+  if (p = nil) or (p.Colors = nil) or (p.Colors.Length = 0) then
+    exit(Colors.Black);
+
+  var n := p.Colors.Length;
+  var k := i mod n;
+  if k < 0 then
+    k += n;
+
+  Result := p.Colors[k];
+end;
+
+procedure PointsVectorsToXY(points: array of Vector; var x, y: array of real);
+begin
+  if points = nil then
+    raise new System.ArgumentNullException;
+
+  x := new real[points.Length];
+  y := new real[points.Length];
+
+  for var i := 0 to points.Length - 1 do
+  begin
+    if points[i] = nil then
+      raise new System.ArgumentNullException;
+
+    if points[i].Length <> 2 then
+      raise new System.ArgumentException('Points: each vector must have exactly 2 coordinates');
+
+    x[i] := points[i][0];
+    y[i] := points[i][1];
+  end;
+end;
+
 function Clamp01(x: real): real;
 begin
   if x < 0 then
@@ -417,6 +803,11 @@ begin
     Result := 1
   else
     Result := x;
+end;
+
+function WithAlpha(c: ColorWPF; alpha: real): ColorWPF;
+begin
+  Result := Color.FromArgb(byte(Round(Clamp01(alpha) * 255)), c.R, c.G, c.B);
 end;
 
 function LerpColor(c1, c2: ColorWPF; t: real): ColorWPF;
@@ -454,6 +845,434 @@ begin
   Result := LerpColor(blue, red, (v - minValue) / (maxValue - minValue));
 end;
 
+function ConfusionMatrixColor(v, maxValue: real): ColorWPF;
+begin
+  if maxValue <= 0 then
+    exit(Color.FromRgb(247, 251, 255));
+
+  Result := LerpColor(
+    Color.FromRgb(247, 251, 255),
+    Color.FromRgb(8, 48, 107),
+    v / maxValue);
+end;
+
+function IntMatrixToReal(m: array[,] of integer): array[,] of real;
+begin
+  if m = nil then
+    exit(nil);
+
+  var rows := m.GetLength(0);
+  var cols := m.GetLength(1);
+  Result := new real[rows, cols];
+  for var i := 0 to rows - 1 do
+    for var j := 0 to cols - 1 do
+      Result[i, j] := m[i, j];
+end;
+
+procedure ValidatePointTooltips(x, y: array of real; tooltips: array of string);
+begin
+  if (x = nil) or (y = nil) then
+    raise new System.ArgumentNullException;
+
+  if x.Length <> y.Length then
+    raise new System.ArgumentException(
+      'Points: x and y sizes mismatch / размеры x и y не совпадают');
+
+  if (tooltips <> nil) and (tooltips.Length <> x.Length) then
+    raise new System.ArgumentException(
+      'Points: tooltips length must match point count / число подсказок должно совпадать с числом точек');
+end;
+
+procedure ValidateLabeledPoints(x, y: array of real; labels: array of integer;
+  classNames: array of string);
+begin
+  if (x = nil) or (y = nil) or (labels = nil) then
+    raise new System.ArgumentNullException;
+
+  if (x.Length <> y.Length) or (x.Length <> labels.Length) then
+    raise new System.ArgumentException(
+      'Points: x, y and labels sizes mismatch / размеры x, y и labels не совпадают');
+
+  if classNames <> nil then
+    foreach var labelValue in labels do
+      if (labelValue < 0) or (labelValue >= classNames.Length) then
+        raise new System.ArgumentException(
+          $'Points: label {labelValue} is outside classNames range 0..{classNames.Length - 1} / ' +
+          $'метка {labelValue} выходит за диапазон classNames 0..{classNames.Length - 1}');
+end;
+
+function IntArrayToReal(a: array of integer): array of real;
+begin
+  if a = nil then
+    exit(nil);
+
+  Result := new real[a.Length];
+  for var i := 0 to a.Length - 1 do
+    Result[i] := a[i];
+end;
+
+function HistogramEdgesToReal(edges: System.Array): array of real;
+begin
+  if edges = nil then
+    raise new System.ArgumentNullException('edges');
+
+  if edges is array of real then
+    exit(edges as array of real);
+
+  if edges is array of integer then
+    exit(IntArrayToReal(edges as array of integer));
+
+  raise new System.ArgumentException(
+    'Hist: edges must be an array of real or integer / границы должны быть массивом вещественных или целых чисел');
+end;
+
+function NormalizeConfusionMatrix(m: array[,] of real; mode: MatrixNormalization): array[,] of real;
+begin
+  if m = nil then
+    exit(nil);
+
+  var rows := m.GetLength(0);
+  var cols := m.GetLength(1);
+
+  Result := new real[rows, cols];
+
+  case mode of
+    MatrixNormalization.None:
+      begin
+        for var i := 0 to rows - 1 do
+          for var j := 0 to cols - 1 do
+            Result[i, j] := m[i, j];
+      end;
+
+    MatrixNormalization.Rows:
+      begin
+        for var i := 0 to rows - 1 do
+        begin
+          var s := 0.0;
+          for var j := 0 to cols - 1 do
+            s += m[i, j];
+
+          if s <> 0 then
+            for var j := 0 to cols - 1 do
+              Result[i, j] := m[i, j] / s;
+        end;
+      end;
+
+    MatrixNormalization.All:
+      begin
+        var s := 0.0;
+        for var i := 0 to rows - 1 do
+          for var j := 0 to cols - 1 do
+            s += m[i, j];
+
+        if s <> 0 then
+          for var i := 0 to rows - 1 do
+            for var j := 0 to cols - 1 do
+              Result[i, j] := m[i, j] / s;
+      end;
+  end;
+end;
+
+procedure SortConfusionMatrixByClassNames(var m: array[,] of real; var classNames: array of string);
+begin
+  if (m = nil) or (classNames = nil) then
+    exit;
+
+  var n := classNames.Length;
+  var idx := new integer[n];
+  for var i := 0 to n - 1 do
+    idx[i] := i;
+
+  for var i := 0 to n - 2 do
+    for var j := i + 1 to n - 1 do
+      if string.Compare(classNames[idx[i]], classNames[idx[j]], StringComparison.CurrentCulture) > 0 then
+      begin
+        var t := idx[i];
+        idx[i] := idx[j];
+        idx[j] := t;
+      end;
+
+  var sortedClassNames := new string[n];
+  var sortedMatrix := new real[n, n];
+
+  for var i := 0 to n - 1 do
+  begin
+    sortedClassNames[i] := classNames[idx[i]];
+    for var j := 0 to n - 1 do
+      sortedMatrix[i, j] := m[idx[i], idx[j]];
+  end;
+
+  classNames := sortedClassNames;
+  m := sortedMatrix;
+end;
+
+procedure ValidateImageSize(width, height: integer);
+begin
+  if width <= 0 then
+    ArgumentError(ER_IMAGE_WIDTH_GT_ZERO);
+  if height <= 0 then
+    ArgumentError(ER_IMAGE_HEIGHT_GT_ZERO);
+end;
+
+procedure ValidateImageVector(values: array of real; width, height, channels: integer);
+begin
+  if values = nil then
+    ArgumentNullError(ER_ARG_NULL, 'values');
+
+  var expected := width * height * channels;
+  if values.Length <> expected then
+    ArgumentError(ER_IMAGE_VALUES_LENGTH, expected);
+end;
+
+function SingleImageMatrix(values: array of real; width, height: integer): Matrix;
+begin
+  ValidateImageSize(width, height);
+  ValidateImageVector(values, width, height, 1);
+
+  Result := new Matrix(1, values.Length);
+  for var j := 0 to values.Length - 1 do
+    Result[0, j] := values[j];
+end;
+
+procedure ValidateImageGridArgs(X: Matrix; width, height, startRow, count, cols: integer; spacing: real);
+begin
+  ValidateImageSize(width, height);
+
+  if X = nil then
+    ArgumentNullError(ER_ARG_NULL, 'X');
+  if startRow < 0 then
+    ArgumentError(ER_IMAGEGRID_STARTROW_NON_NEGATIVE);
+  if count <= 0 then
+    ArgumentError(ER_IMAGEGRID_COUNT_GT_ZERO);
+  if cols <= 0 then
+    ArgumentError(ER_IMAGEGRID_COLS_GT_ZERO);
+  if spacing < 0 then
+    ArgumentError(ER_IMAGEGRID_SPACING_NON_NEGATIVE);
+  if startRow + count > X.RowCount then
+    ArgumentError(ER_IMAGEGRID_ROW_RANGE);
+  if X.ColCount <> width * height then
+    ArgumentError(ER_IMAGEGRID_COLCOUNT);
+end;
+
+function RoundToByte(v: real): byte;
+begin
+  if v < 0 then
+    v := 0;
+  if v > 255 then
+    v := 255;
+  Result := byte(Round(v));
+end;
+
+function ValidateFiniteImageValue(v: real; context: string): real;
+begin
+  if real.IsNaN(v) or real.IsInfinity(v) then
+    ArgumentError(ER_IMAGE_VALUES_FINITE, context);
+  Result := v;
+end;
+
+procedure DrawImageCore(pixels: array of byte; stride, x0, y0: integer; values: array of real;
+  width, height, channels: integer; normalize, invert: boolean);
+begin
+  if pixels = nil then
+    exit;
+
+  ValidateImageSize(width, height);
+  ValidateImageVector(values, width, height, channels);
+
+  if channels <> 1 then
+    ArgumentError(ER_IMAGE_GRAYSCALE_ONLY);
+
+  var minValue := 0.0;
+  var maxValue := 0.0;
+
+  if normalize then
+  begin
+    minValue := ValidateFiniteImageValue(values[0], 'Image');
+    maxValue := minValue;
+
+    for var i := 1 to values.Length - 1 do
+    begin
+      var v := ValidateFiniteImageValue(values[i], 'Image');
+      if v < minValue then minValue := v;
+      if v > maxValue then maxValue := v;
+    end;
+  end
+  else
+  begin
+    maxValue := ValidateFiniteImageValue(values[0], 'Image');
+    if values[0] < 0 then
+      ArgumentError(ER_IMAGE_VALUE_GE_ZERO);
+
+    for var i := 1 to values.Length - 1 do
+    begin
+      var v := ValidateFiniteImageValue(values[i], 'Image');
+      if v < 0 then
+        ArgumentError(ER_IMAGE_VALUE_GE_ZERO);
+      if v > maxValue then maxValue := v;
+    end;
+
+    if maxValue > 255 then
+      ArgumentError(ER_IMAGE_VALUE_LE_255);
+  end;
+
+  var scale01 := (not normalize) and (maxValue <= 1.0);
+  var range := maxValue - minValue;
+
+  for var r := 0 to height - 1 do
+    for var c := 0 to width - 1 do
+    begin
+      var idx := (r * width + c) * channels;
+      var v := values[idx];
+      var grayValue := 0.0;
+
+      if normalize then
+      begin
+        if Abs(range) < 1e-12 then
+          grayValue := 0
+        else
+          grayValue := (v - minValue) / range * 255;
+      end
+      else if scale01 then
+        grayValue := v * 255
+      else
+        grayValue := v;
+
+      var gray := RoundToByte(grayValue);
+      if invert then
+        gray := byte(255 - gray);
+
+      pixels[(y0 + r) * stride + x0 + c] := gray;
+    end;
+end;
+
+function CreateImageGridBitmap(X: Matrix; width, height, startRow, count, cols: integer;
+  spacing: real; normalize, invert: boolean): System.Windows.Media.Imaging.BitmapSource;
+begin
+  var visibleCols := if count < cols then count else cols;
+  var rowCount := (count + cols - 1) div cols;
+
+  var gap := Round(width * spacing);
+  if gap < 0 then
+    gap := 0;
+
+  var bitmapWidth := visibleCols * width + (visibleCols - 1) * gap;
+  var bitmapHeight := rowCount * height + (rowCount - 1) * gap;
+  var stride := bitmapWidth;
+  var pixels := new byte[stride * bitmapHeight];
+
+  for var i := 0 to pixels.Length - 1 do
+    pixels[i] := 255;
+
+  for var k := 0 to count - 1 do
+  begin
+    var col := k mod cols;
+    var row := k div cols;
+    var values := X.Row(startRow + k);
+
+    DrawImageCore(pixels, stride,
+      col * (width + gap),
+      row * (height + gap),
+      values, width, height, 1, normalize, invert);
+  end;
+
+  Result := System.Windows.Media.Imaging.BitmapSource.Create(
+    bitmapWidth, bitmapHeight,
+    96, 96,
+    PixelFormats.Gray8,
+    System.Windows.Media.Imaging.BitmapPalettes.Gray256,
+    pixels, stride);
+end;
+
+function ImageGridFittingCount(availableWidth, availableHeight: real;
+  width, height, requestedCount, cols: integer; spacing: real): integer;
+begin
+  Result := requestedCount;
+
+  if (availableWidth <= 0) or (availableHeight <= 0) then
+    exit;
+
+  var visibleCols := if requestedCount < cols then requestedCount else cols;
+  if visibleCols <= 0 then
+    exit;
+
+  var gap := Round(width * spacing);
+  if gap < 0 then
+    gap := 0;
+
+  var naturalWidth := visibleCols * width + (visibleCols - 1) * gap;
+  if naturalWidth <= 0 then
+    exit;
+
+  var scale := availableWidth / naturalWidth;
+  if scale <= 0 then
+    exit;
+
+  var rowHeight := height * scale;
+  var rowGap := gap * scale;
+  var rowStep := rowHeight + rowGap;
+  if rowStep <= 0 then
+    exit;
+
+  var rows := Ceil((availableHeight + rowGap) / rowStep);
+  if rows < 1 then
+    rows := 1;
+
+  var maxRows := (requestedCount + cols - 1) div cols;
+  if rows > maxRows then
+    rows := maxRows;
+
+  Result := rows * cols;
+  if Result > requestedCount then
+    Result := requestedCount;
+end;
+
+procedure UpdateImageGridBitmap(image: System.Windows.Controls.Image; host: FrameworkElement; X: Matrix;
+  width, height, startRow, requestedCount, cols: integer; spacing: real; normalize, invert: boolean);
+begin
+  if (image = nil) or (host = nil) then
+    exit;
+
+  var actualCount := ImageGridFittingCount(
+    host.ActualWidth, host.ActualHeight,
+    width, height, requestedCount, cols, spacing);
+
+  if actualCount < 1 then
+    actualCount := 1;
+
+  if (image.Tag <> nil) and (System.Convert.ToInt32(image.Tag) = actualCount) then
+    exit;
+
+  image.Source := CreateImageGridBitmap(X, width, height, startRow, actualCount, cols, spacing, normalize, invert);
+  image.Tag := actualCount;
+end;
+
+function FindTextBlockByName(obj: DependencyObject; name: string): TextBlock;
+begin
+  if obj = nil then
+    exit(nil);
+
+  var tb := obj as TextBlock;
+  if (tb <> nil) and (tb.Name = name) then
+    exit(tb);
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+  begin
+    Result := FindTextBlockByName(VisualTreeHelper.GetChild(obj, i), name);
+    if Result <> nil then
+      exit;
+  end;
+end;
+
+procedure SetOptionalTextBlockText(tb: TextBlock; s: string);
+begin
+  if tb = nil then
+    exit;
+
+  tb.Text := s;
+  tb.Visibility := if (s = nil) or (s = '') then Visibility.Collapsed else Visibility.Visible;
+end;
+
 procedure DumpVisualNode(sb: StringBuilder; obj: DependencyObject; level: integer);
 begin
   if obj = nil then
@@ -470,6 +1289,263 @@ begin
   var cnt := VisualTreeHelper.GetChildrenCount(obj);
   for var i := 0 to cnt - 1 do
     DumpVisualNode(sb, VisualTreeHelper.GetChild(obj, i), level + 1);
+end;
+
+procedure HidePlotGridInVisualTree(obj: DependencyObject);
+begin
+  if obj = nil then
+    exit;
+
+  if obj is AxisGrid then
+    (obj as AxisGrid).Visibility := Visibility.Collapsed;
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+    HidePlotGridInVisualTree(VisualTreeHelper.GetChild(obj, i));
+end;
+
+procedure HidePlotAxisInVisualTree(obj: DependencyObject; orientation: AxisOrientation);
+begin
+  if obj = nil then
+    exit;
+
+  if obj is PlotAxis then
+  begin
+    var axis := obj as PlotAxis;
+    if axis.AxisOrientation = orientation then
+      axis.Visibility := Visibility.Collapsed;
+  end;
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+    HidePlotAxisInVisualTree(VisualTreeHelper.GetChild(obj, i), orientation);
+end;
+
+procedure SetIntegerAxisInVisualTree(obj: DependencyObject;
+  orientation: AxisOrientation; maxTicks: integer);
+begin
+  if obj = nil then
+    exit;
+
+  if obj is InteractiveDataDisplay.WPF.Axis then
+  begin
+    var axis := obj as InteractiveDataDisplay.WPF.Axis;
+    if axis.AxisOrientation = orientation then
+    begin
+      axis.MaxTicks := maxTicks;
+      axis.AreMinorTicksVisible := false;
+    end;
+  end;
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+    SetIntegerAxisInVisualTree(
+      VisualTreeHelper.GetChild(obj, i), orientation, maxTicks);
+end;
+
+procedure SetIntegerAxis(chart: ChartWPF; orientation: AxisOrientation;
+  minValue, maxValue: real);
+begin
+  var integerCount :=
+    integer(System.Math.Ceiling(maxValue) - System.Math.Floor(minValue)) + 1;
+  var maxTicks := Min(20, Max(2, integerCount));
+
+  chart.ApplyTemplate;
+  chart.UpdateLayout;
+  SetIntegerAxisInVisualTree(chart, orientation, maxTicks);
+  chart.UpdateLayout;
+end;
+
+procedure SetIntegerValueAxis(chart: ChartWPF; orientation: AxisOrientation;
+  values: array of integer);
+begin
+  if (values = nil) or (values.Length = 0) then
+    exit;
+
+  var minValue := 0;
+  var maxValue := 0;
+  foreach var value in values do
+  begin
+    if value < minValue then
+      minValue := value;
+    if value > maxValue then
+      maxValue := value;
+  end;
+
+  SetIntegerAxis(chart, orientation, minValue, maxValue);
+end;
+
+procedure HidePlotAxesAndGridInVisualTree(obj: DependencyObject);
+begin
+  if obj = nil then
+    exit;
+
+  if obj is PlotAxis then
+    (obj as PlotAxis).Visibility := Visibility.Collapsed;
+
+  if obj is AxisGrid then
+    (obj as AxisGrid).Visibility := Visibility.Collapsed;
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+    HidePlotAxesAndGridInVisualTree(VisualTreeHelper.GetChild(obj, i));
+end;
+
+function FindD3FigureInVisualTree(obj: DependencyObject): InteractiveDataDisplay.WPF.Figure;
+begin
+  if obj = nil then
+    exit(nil);
+
+  if obj is InteractiveDataDisplay.WPF.Figure then
+    exit(obj as InteractiveDataDisplay.WPF.Figure);
+
+  var cnt := VisualTreeHelper.GetChildrenCount(obj);
+  for var i := 0 to cnt - 1 do
+  begin
+    Result := FindD3FigureInVisualTree(VisualTreeHelper.GetChild(obj, i));
+    if Result <> nil then
+      exit;
+  end;
+end;
+
+function FigureSlotSize(fig: InteractiveDataDisplay.WPF.Figure; placement: InteractiveDataDisplay.WPF.Placement): real;
+begin
+  Result := 0;
+  if fig = nil then
+    exit;
+
+  foreach var child in fig.Children do
+  begin
+    var fe := child as FrameworkElement;
+    if (fe = nil) or (InteractiveDataDisplay.WPF.Figure.GetPlacement(fe) <> placement) then
+      continue;
+
+    if (placement = InteractiveDataDisplay.WPF.Placement.Left) or
+       (placement = InteractiveDataDisplay.WPF.Placement.Right) then
+      Result += Max(fe.ActualWidth, fe.DesiredSize.Width)
+    else
+      Result += Max(fe.ActualHeight, fe.DesiredSize.Height);
+  end;
+end;
+
+procedure AddFigureSlotSpacer(fig: InteractiveDataDisplay.WPF.Figure; placement: InteractiveDataDisplay.WPF.Placement; size: real);
+begin
+  if (fig = nil) or (size <= 0.1) then
+    exit;
+
+  var spacer := new Border;
+  spacer.Opacity := 0;
+  spacer.IsHitTestVisible := false;
+
+  if (placement = InteractiveDataDisplay.WPF.Placement.Left) or
+     (placement = InteractiveDataDisplay.WPF.Placement.Right) then
+    spacer.Width := size
+  else
+    spacer.Height := size;
+
+  InteractiveDataDisplay.WPF.Figure.SetPlacement(spacer, placement);
+  fig.Children.Insert(0, spacer);
+end;
+
+procedure AddCategoryLabelsToLeftSlot(chart: ChartWPF; labels: array of string);
+begin
+  if (chart = nil) or (labels = nil) or (labels.Length = 0) then
+    exit;
+
+  chart.ApplyTemplate;
+  chart.UpdateLayout;
+
+  var d3fig := FindD3FigureInVisualTree(chart);
+  if d3fig = nil then
+    exit;
+
+  var labelGrid := new GridWPF;
+  labelGrid.Margin := new Thickness(0, 0, 8, 0);
+  labelGrid.MinWidth := 1;
+
+  for var i := 0 to labels.Length - 1 do
+    labelGrid.RowDefinitions.Add(new RowDefinition);
+
+  for var i := 0 to labels.Length - 1 do
+  begin
+    var tb := new TextBlock;
+    tb.Text := labels[i];
+    tb.FontSize := 12;
+    tb.TextAlignment := TextAlignment.Right;
+    tb.HorizontalAlignment := System.Windows.HorizontalAlignment.Right;
+    tb.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+    tb.TextTrimming := TextTrimming.CharacterEllipsis;
+    GridWPF.SetRow(tb, i);
+    labelGrid.Children.Add(tb);
+  end;
+
+  InteractiveDataDisplay.WPF.Figure.SetPlacement(labelGrid, InteractiveDataDisplay.WPF.Placement.Left);
+  d3fig.Children.Insert(0, labelGrid);
+end;
+
+procedure AlignPairPlotSlots(fig: Figure; outerOnly: boolean := false);
+begin
+  if fig = nil then
+    exit;
+
+  var rows := fig.cells.GetLength(0);
+  var cols := fig.cells.GetLength(1);
+  var d3figs := new InteractiveDataDisplay.WPF.Figure[rows, cols];
+
+  for var i := 0 to rows - 1 do
+    for var j := 0 to cols - 1 do
+    begin
+      var c := fig.cells[i, j];
+      if (c = nil) or (c.chart = nil) then
+        continue;
+
+      c.chart.ApplyTemplate;
+      c.chart.UpdateLayout;
+
+      d3figs[i, j] := FindD3FigureInVisualTree(c.chart);
+    end;
+
+  var maxLeft := 0.0;
+  var maxBottom := 0.0;
+
+  for var i := 0 to rows - 1 do
+    for var j := 0 to cols - 1 do
+    begin
+      var d3fig := d3figs[i, j];
+      if d3fig = nil then
+        continue;
+
+      maxLeft := Max(maxLeft, FigureSlotSize(d3fig, InteractiveDataDisplay.WPF.Placement.Left));
+      //maxBottom := Max(maxBottom, FigureSlotSize(d3fig, InteractiveDataDisplay.WPF.Placement.Bottom));
+    end;
+  
+  maxLeft := Max(0, maxLeft - 16);
+
+  for var i := 0 to rows - 1 do
+    for var j := 0 to cols - 1 do
+    begin
+      var d3fig := d3figs[i, j];
+      if d3fig = nil then
+        continue;
+
+      d3fig.InvalidateMeasure;
+      d3fig.UpdateLayout;
+      
+      if (not outerOnly) or (j = 0) then
+        AddFigureSlotSpacer(
+          d3fig,
+          InteractiveDataDisplay.WPF.Placement.Left,
+          maxLeft - FigureSlotSize(d3fig, InteractiveDataDisplay.WPF.Placement.Left));
+
+      if (not outerOnly) or (i = rows - 1) then
+      begin  
+        AddFigureSlotSpacer(
+          d3fig,
+          InteractiveDataDisplay.WPF.Placement.Bottom,
+          maxBottom - FigureSlotSize(d3fig, InteractiveDataDisplay.WPF.Placement.Bottom));
+      end;    
+    end;
+    
 end;
 
 function MakeHistogram(data: array of real; bins: integer): (array of real, array of real);
@@ -493,8 +1569,6 @@ begin
   Result := (xs,counts);
 end;
 
-
-
 procedure InitUI;
 begin
   uiThread := new Thread(() ->
@@ -511,12 +1585,15 @@ begin
 
     rootChart := new ChartWPF;
     rootChart.Margin := new Thickness(2);
+    rootChart.LegendVisibility := Visibility.Hidden;
 
     win := new WindowWPF;
     win.Title := 'PlotML';
     win.Width := 800;
     win.Height := 600;
-    win.Content := rootChart;
+    var placeholder := new GridWPF;
+    placeholder.Background := Brushes.White;
+    win.Content := placeholder;
 
     win.Closed += (o,e) ->
       Dispatcher.CurrentDispatcher.BeginInvokeShutdown(
@@ -536,6 +1613,18 @@ begin
 
   while uiDispatcher = nil do
     Sleep(10);
+end;
+
+procedure ShowRootChart;
+begin
+  if (win <> nil) and (rootChart <> nil) and (win.Content <> rootChart) then
+  begin
+    win.Content := rootChart;
+    rootTitleBlock := nil;
+    rootXLabelBlock := nil;
+    rootYLabelBlock := nil;
+    gridMode := false;
+  end;
 end;
 
 constructor Palette.Create(params c: array of Color);
@@ -562,6 +1651,11 @@ begin
   Result := c;
 end;
 
+function Cell.PaletteColor(i: integer): ColorWPF;
+begin
+  Result := ColorFromPalette(palette, i);
+end;
+
 procedure Cell.SetPalette(p: PaletteWPF);
 begin
   if p = nil then exit;
@@ -574,24 +1668,54 @@ procedure Cell.SetTitle(s: string);
 begin
   Plot.RunUI(() ->
   begin
+    if visual <> nil then
+    begin
+      var tb := FindTextBlockByName(visual, 'PlotML_Title');
+      if tb <> nil then
+      begin
+        SetOptionalTextBlockText(tb, s);
+        exit;
+      end;
+    end;
+
     EnsureChart;
     chart.Title := s;
   end);
 end;
 
-procedure Cell.XLabel(s: string);
+procedure Cell.SetXLabel(s: string);
 begin
   Plot.RunUI(() ->
   begin
+    if visual <> nil then
+    begin
+      var tb := FindTextBlockByName(visual, 'PlotML_XLabel');
+      if tb <> nil then
+      begin
+        SetOptionalTextBlockText(tb, s);
+        exit;
+      end;
+    end;
+
     EnsureChart;
     chart.BottomTitle := s;
   end);
 end;
 
-procedure Cell.YLabel(s: string);
+procedure Cell.SetYLabel(s: string);
 begin
   Plot.RunUI(() ->
   begin
+    if visual <> nil then
+    begin
+      var tb := FindTextBlockByName(visual, 'PlotML_YLabel');
+      if tb <> nil then
+      begin
+        SetOptionalTextBlockText(tb, s);
+        exit;
+      end;
+    end;
+
     EnsureChart;
     chart.LeftTitle := s;
   end);
@@ -637,11 +1761,18 @@ procedure Cell.Clear;
 begin
   Plot.RunUI(() ->
   begin
-    if chart = nil then exit;
+    if chart <> nil then
+    begin
+      var container := chart.Content as GridWPF;
+      if container <> nil then
+        container.Children.Clear;
+    end;
 
-    var container := chart.Content as GridWPF;
-    if container <> nil then
-      container.Children.Clear;
+    if visual <> nil then
+    begin
+      parentGrid.Children.Remove(visual);
+      visual := nil;
+    end;
 
     paletteIndex := 0;
   end);
@@ -650,6 +1781,12 @@ end;
 procedure Cell.EnsureChart;
 begin
   if chart <> nil then exit;
+
+  if visual <> nil then
+  begin
+    parentGrid.Children.Remove(visual);
+    visual := nil;
+  end;
 
   chart := new ChartWPF;
   chart.Margin := new Thickness(2);
@@ -677,27 +1814,56 @@ begin
   end);
 end;
 
-procedure Cell.Points(x, y: array of real; color: ColorWPF;
-  size: real; marker: MarkerType; legend: string);
+procedure Cell.Line(k, b: real; color: ColorWPF; thickness: real; legend: string);
 begin
+  Line(k, -1, b, color, thickness, legend);
+end;
+
+procedure Cell.Line(A, B, C: real; color: ColorWPF; thickness: real; legend: string);
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+
+    var clr := if color<>DefaultColor then color else Colors.Red;
+
+    Plot.DrawImplicitLine(chart, A, B, C, clr, thickness, legend);
+  end);
+end;
+
+procedure Cell.Point(x, y: real; color: ColorWPF; size: real; marker: MarkerType; legend: string);
+begin
+  var clr := if color<>DefaultColor then color else Colors.Black;
+  Points(Arr(x), Arr(y), clr, size, marker, legend);
+end;
+
+procedure Cell.Points(x, y: array of real; color: ColorWPF;
+  size: real; marker: MarkerType; legend: string; tooltips: array of string);
+begin
+  ValidatePointTooltips(x, y, tooltips);
   Plot.RunUI(() ->
   begin
     EnsureChart;
 
     var clr := if color<>DefaultColor then color else NextColor;
 
-    Plot.DrawPoints(chart, x, y, clr, size, marker, legend);
+    Plot.DrawPoints(chart, x, y, clr, size, marker, legend, tooltips);
   end);
 end;
 
-procedure Cell.Points(x, y: array of real; labels: array of integer;
-  size: real; marker: MarkerType);
+procedure Cell.Points(points: array of Vector; color: ColorWPF;
+  size: real; marker: MarkerType; legend: string; tooltips: array of string);
 begin
-  if (x = nil) or (y = nil) or (labels = nil) then
-    raise new System.ArgumentNullException;
+  var x: array of real;
+  var y: array of real;
+  PointsVectorsToXY(points, x, y);
+  self.Points(x, y, color, size, marker, legend, tooltips);
+end;
 
-  if (x.Length <> y.Length) or (x.Length <> labels.Length) then
-    raise new System.ArgumentException('Points: array sizes mismatch');
+procedure Cell.Points(x, y: array of real; labels: array of integer;
+  size: real; marker: MarkerType; classNames: array of string);
+begin
+  ValidateLabeledPoints(x, y, labels, classNames);
 
   var classes := labels.Distinct.ToArray;
   &Array.Sort(classes);
@@ -711,9 +1877,10 @@ begin
     var xs := ind.ConvertAll(i -> x[i]);
     var ys := ind.ConvertAll(i -> y[i]);
 
-    var clr := pal.Colors[c mod pal.Colors.Length];
+    var clr := if c = -1 then Colors.Black else ColorFromPalette(pal, c);
 
-    self.Points(xs, ys, clr, size, marker, nil);
+    var legend := if classNames = nil then nil else classNames[c];
+    self.Points(xs, ys, clr, size, marker, legend);
   end;
 end;
 
@@ -723,6 +1890,41 @@ begin
   begin
     EnsureChart;
     Plot.DrawHeatmap(chart, m);
+  end);
+end;
+
+procedure Cell.Image(values: array of real; width, height: integer; invert: boolean);
+begin
+  ImageGrid(SingleImageMatrix(values, width, height), width, height,
+    0, 1, 1, 0.0, false, invert);
+end;
+
+procedure Cell.Image(values: Vector; width, height: integer; invert: boolean);
+begin
+  if values = nil then
+    ArgumentNullError(ER_ARG_NULL, 'values');
+
+  Image(values.Data, width, height, invert);
+end;
+
+procedure Cell.ImageGrid(X: Matrix; width, height, startRow, count, cols: integer;
+  spacing: real; normalize, invert: boolean);
+begin
+  Plot.RunUI(() ->
+  begin
+    if chart <> nil then
+    begin
+      parentGrid.Children.Remove(chart);
+      chart := nil;
+    end;
+
+    if visual <> nil then
+      parentGrid.Children.Remove(visual);
+
+    visual := Plot.CreateImageGridView(X, width, height, startRow, count, cols, spacing, normalize, invert);
+    GridWPF.SetRow(visual, row);
+    GridWPF.SetColumn(visual, col);
+    parentGrid.Children.Add(visual);
   end);
 end;
 
@@ -755,7 +1957,99 @@ begin
   end);
 end;
 
-procedure Cell.Hist(x: array of real; bins: integer; color: ColorWPF; alpha: real; legend: string);
+procedure Cell.ConfusionMatrix(m: array[,] of integer; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  Plot.RunUI(() ->
+  begin
+    if chart <> nil then
+    begin
+      parentGrid.Children.Remove(chart);
+      chart := nil;
+    end;
+
+    if visual <> nil then
+      parentGrid.Children.Remove(visual);
+
+    visual := Plot.CreateConfusionMatrixView(
+      NormalizeConfusionMatrix(IntMatrixToReal(m), normalize),
+      classNames, '', '', '', normalize <> MatrixNormalization.None, sortClassNames);
+    GridWPF.SetRow(visual, row);
+    GridWPF.SetColumn(visual, col);
+    parentGrid.Children.Add(visual);
+  end);
+end;
+
+procedure Cell.ConfusionMatrix(m: Matrix; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  Plot.RunUI(() ->
+  begin
+    if chart <> nil then
+    begin
+      parentGrid.Children.Remove(chart);
+      chart := nil;
+    end;
+
+    if visual <> nil then
+      parentGrid.Children.Remove(visual);
+
+    visual := Plot.CreateConfusionMatrixView(
+      NormalizeConfusionMatrix(m.Data, normalize),
+      classNames, '', '', '', normalize <> MatrixNormalization.None, sortClassNames);
+    GridWPF.SetRow(visual, row);
+    GridWPF.SetColumn(visual, col);
+    parentGrid.Children.Add(visual);
+  end);
+end;
+
+procedure Cell.ConfusionMatrix(cm: MetricsABC.ConfusionMatrix; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  if cm = nil then
+    raise new System.ArgumentNullException;
+
+  if classNames = nil then
+    classNames := cm.Labels.Select(x -> x.ToString).ToArray;
+
+  ConfusionMatrix(cm.Matrix, classNames, normalize, sortClassNames);
+end;
+
+procedure Cell.Hist(x: array of real; bins: integer; color: ColorWPF;
+  alpha: real; legend: string; edges: System.Array);
+begin
+  if (bins <> 0) and (edges <> nil) then
+    raise new System.ArgumentException(
+      'Hist: specify either bins or edges, not both / задайте либо bins, либо edges');
+
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+
+    var clr := if color<>DefaultColor then color else NextColor;
+    if edges = nil then
+      Plot.DrawHist(chart, x, bins, clr, alpha, legend)
+    else
+      Plot.DrawHist(chart, x, HistogramEdgesToReal(edges), clr, alpha, legend);
+  end);
+end;
+
+procedure Cell.Hist(x: array of integer; bins: integer;
+  color: ColorWPF; alpha: real; legend: string; edges: System.Array);
+begin
+  Hist(IntArrayToReal(x), bins, color, alpha, legend, edges);
+end;
+
+procedure Cell.Bar(y: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  var x: array of real := nil;
+  Bar(x, y, color, width, alpha, legend);
+end;
+
+procedure Cell.Bar(y: array of integer; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Bar(IntArrayToReal(y), color, width, alpha, legend);
+  Plot.RunUI(() -> SetIntegerValueAxis(chart, AxisOrientation.Left, y));
+end;
+
+procedure Cell.Bar(x, y: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
 begin
   Plot.RunUI(() ->
   begin
@@ -763,8 +2057,34 @@ begin
 
     var clr := if color<>DefaultColor then color else NextColor;
 
-    Plot.DrawHist(chart, x, bins, clr, alpha, legend);
+    Plot.DrawBar(chart, x, y, clr, width, alpha, legend);
   end);
+end;
+
+procedure Cell.Bar(x: array of real; y: array of integer; color: ColorWPF;
+  width: real; alpha: real; legend: string);
+begin
+  Bar(x, IntArrayToReal(y), color, width, alpha, legend);
+  Plot.RunUI(() -> SetIntegerValueAxis(chart, AxisOrientation.Left, y));
+end;
+
+procedure Cell.HorizontalBar(labels: array of string; values: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+
+    var clr := if color<>DefaultColor then color else NextColor;
+
+    Plot.DrawHorizontalBar(chart, labels, values, clr, width, alpha, legend);
+  end);
+end;
+
+procedure Cell.HorizontalBar(labels: array of string; values: array of integer;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  HorizontalBar(labels, IntArrayToReal(values), color, width, alpha, legend);
+  Plot.RunUI(() -> SetIntegerValueAxis(chart, AxisOrientation.Bottom, values));
 end;
 
 procedure Cell.LineGraph(x, y: Vector; color: ColorWPF; thickness: real; legend: string);
@@ -772,14 +2092,16 @@ begin
   LineGraph(x.Data, y.Data, color, thickness, legend);
 end;
 
-procedure Cell.Points(x, y: Vector; color: ColorWPF; size: real; marker: MarkerType; legend: string);
+procedure Cell.Points(x, y: Vector; color: ColorWPF; size: real; marker: MarkerType;
+  legend: string; tooltips: array of string);
 begin
-  Points(x.Data, y.Data, color, size, marker, legend);
+  Points(x.Data, y.Data, color, size, marker, legend, tooltips);
 end;
 
-procedure Cell.Points(x, y: Vector; labels: array of integer; size: real; marker: MarkerType);
+procedure Cell.Points(x, y: Vector; labels: array of integer; size: real;
+  marker: MarkerType; classNames: array of string);
 begin
-  Points(x.Data, y.Data, labels, size, marker);
+  Points(x.Data, y.Data, labels, size, marker, classNames);
 end;
 
 procedure Cell.Heatmap(m: Matrix);
@@ -788,9 +2110,25 @@ begin
 end;
 
 procedure Cell.Hist(x: Vector; bins: integer;
-  color: ColorWPF; alpha: real; legend: string);
+  color: ColorWPF; alpha: real; legend: string; edges: System.Array);
 begin
-  Hist(x.Data, bins, color, alpha, legend);
+  Hist(x.Data, bins, color, alpha, legend, edges);
+end;
+
+procedure Cell.Bar(y: Vector; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Bar(y.Data, color, width, alpha, legend);
+end;
+
+procedure Cell.Bar(x, y: Vector; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Bar(x.Data, y.Data, color, width, alpha, legend);
+end;
+
+procedure Cell.HorizontalBar(labels: array of string; values: Vector;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  HorizontalBar(labels, values.Data, color, width, alpha, legend);
 end;
 
 procedure Cell.Text(s: string; x: real; y: real);
@@ -800,6 +2138,50 @@ begin
     EnsureChart;
 
     Plot.DrawText(chart, s, x, y);
+  end);
+end;
+
+procedure Cell.HideXAxis;
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+    chart.ApplyTemplate;
+    chart.UpdateLayout;
+    HidePlotAxisInVisualTree(chart, AxisOrientation.Bottom);
+  end);
+end;
+
+procedure Cell.HideYAxis;
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+    chart.ApplyTemplate;
+    chart.UpdateLayout;
+    HidePlotAxisInVisualTree(chart, AxisOrientation.Left);
+  end);
+end;
+
+procedure Cell.HideGrid;
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+    chart.ApplyTemplate;
+    chart.UpdateLayout;
+    HidePlotGridInVisualTree(chart);
+  end);
+end;
+
+procedure Cell.HideAxesAndGrid;
+begin
+  Plot.RunUI(() ->
+  begin
+    EnsureChart;
+    chart.ApplyTemplate;
+    chart.UpdateLayout;
+    HidePlotAxesAndGridInVisualTree(chart);
   end);
 end;
 
@@ -858,12 +2240,56 @@ begin
   end);
 end;
 
-var gridMode := false;
+static procedure Plot.HideXAxis;
+begin
+  RunUI(() ->
+  begin
+    rootChart.ApplyTemplate;
+    rootChart.UpdateLayout;
+    HidePlotAxisInVisualTree(rootChart, AxisOrientation.Bottom);
+  end);
+end;
+
+static procedure Plot.HideYAxis;
+begin
+  RunUI(() ->
+  begin
+    rootChart.ApplyTemplate;
+    rootChart.UpdateLayout;
+    HidePlotAxisInVisualTree(rootChart, AxisOrientation.Left);
+  end);
+end;
+
+static procedure Plot.HideGrid;
+begin
+  RunUI(() ->
+  begin
+    rootChart.ApplyTemplate;
+    rootChart.UpdateLayout;
+    HidePlotGridInVisualTree(rootChart);
+  end);
+end;
+
+static procedure Plot.HideAxesAndGrid;
+begin
+  RunUI(() ->
+  begin
+    rootChart.ApplyTemplate;
+    rootChart.UpdateLayout;
+    HidePlotAxesAndGridInVisualTree(rootChart);
+  end);
+end;
 
 static procedure Plot.SetTitle(s: string);
 begin
   RunUI(() ->
   begin
+    if rootTitleBlock <> nil then
+    begin
+      SetOptionalTextBlockText(rootTitleBlock, s);
+      exit;
+    end;
+
     if gridMode then
       win.Title := s
     else
@@ -871,18 +2297,30 @@ begin
   end);
 end;
 
-static procedure Plot.XLabel(s: string);
+static procedure Plot.SetXLabel(s: string);
 begin
   RunUI(() ->
   begin
+    if rootXLabelBlock <> nil then
+    begin
+      SetOptionalTextBlockText(rootXLabelBlock, s);
+      exit;
+    end;
+
     rootChart.BottomTitle := s;
   end);
 end;
 
-static procedure Plot.YLabel(s: string);
+static procedure Plot.SetYLabel(s: string);
 begin
   RunUI(() ->
   begin
+    if rootYLabelBlock <> nil then
+    begin
+      SetOptionalTextBlockText(rootYLabelBlock, s);
+      exit;
+    end;
+
     rootChart.LeftTitle := s;
   end);
 end;
@@ -892,13 +2330,13 @@ begin
   RunUI(() ->
   begin
     if title <> '' then
-      rootChart.Title := title;
+      SetTitle(title);
 
     if xlabel <> '' then
-      rootChart.BottomTitle := xlabel;
+      SetXLabel(xlabel);
 
     if ylabel <> '' then
-      rootChart.LeftTitle := ylabel;
+      SetYLabel(ylabel);
   end);
 end;
 
@@ -909,6 +2347,7 @@ begin
     var container := rootChart.Content as GridWPF;
     if container <> nil then
       container.Children.Clear;
+    rootChart.LegendVisibility := Visibility.Hidden;
     rootPaletteIndex := 0;
   end);
 end;
@@ -967,7 +2406,8 @@ begin
 end;
 
 static function Plot.CreatePointSeries(x, y: array of real; 
-  color: ColorWPF; size: real; marker: MarkerType): MarkerGraphWPF;
+  color: ColorWPF; size: real; marker: MarkerType;
+  tooltips: array of string): MarkerGraphWPF;
 begin
   var g := new MarkerGraphWPF;
 
@@ -982,15 +2422,54 @@ begin
   g.MarkerType := CreateMarker(marker);
   g.StrokeThickness := 0;
   
+  if tooltips <> nil then
+  begin
+    var tooltipSeries := new InteractiveDataDisplay.WPF.DataSeries;
+    tooltipSeries.Key := 'Tooltip';
+    tooltipSeries.Data := tooltips;
+    g.Sources.Add(tooltipSeries);
+  end;
+
   g.PlotColor(x,y,color);
 
+  if tooltips <> nil then
+  begin
+    var textFactory := new FrameworkElementFactory(typeof(TextBlock));
+    textFactory.SetBinding(TextBlock.TextProperty, new Binding('Tooltip'));
+    var tooltipTemplate := new DataTemplate;
+    tooltipTemplate.VisualTree := textFactory;
+    g.TooltipTemplate := tooltipTemplate;
+  end;
+
   Result := g;
+end;
+
+static function Plot.CreateXYTooltipTemplate: DataTemplate;
+begin
+  var panelFactory := new FrameworkElementFactory(typeof(StackPanel));
+  panelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+
+  var xFactory := new FrameworkElementFactory(typeof(TextBlock));
+  var xBinding := new Binding('X');
+  xBinding.StringFormat := 'X: {0}';
+  xFactory.SetBinding(TextBlock.TextProperty, xBinding);
+  panelFactory.AppendChild(xFactory);
+
+  var yFactory := new FrameworkElementFactory(typeof(TextBlock));
+  var yBinding := new Binding('Y');
+  yBinding.StringFormat := 'Y: {0}';
+  yFactory.SetBinding(TextBlock.TextProperty, yBinding);
+  panelFactory.AppendChild(yFactory);
+
+  Result := new DataTemplate;
+  Result.VisualTree := panelFactory;
 end;
 
 static procedure Plot.DrawLine(chart: ChartWPF; x, y: array of real;
   color: ColorWPF; thickness: real; legend: string);
 begin
   var g := CreateLineSeries(x, y, color);
+  InteractiveDataDisplay.WPF.Legend.SetIsVisible(g, legend <> nil);
 
   g.StrokeThickness := thickness;
 
@@ -998,13 +2477,31 @@ begin
   begin  
     g.Description := legend;
     chart.LegendVisibility := Visibility.Visible;
-  end;  
+  end;
+
+  AddSeries(chart, g);
+end;
+
+static procedure Plot.DrawImplicitLine(chart: ChartWPF; A, B, C: real;
+  color: ColorWPF; thickness: real; legend: string);
+begin
+  var g := new ImplicitLinePlot(A, B, C, color, thickness);
+  InteractiveDataDisplay.WPF.Legend.SetIsVisible(g, legend <> nil);
+
+  if legend <> nil then
+  begin
+    g.Description := legend;
+    chart.LegendVisibility := Visibility.Visible;
+  end;
 
   AddSeries(chart, g);
 end;
 
 static procedure Plot.DrawText(chart: ChartWPF; s: string; x, y: real);
 begin
+  if chart = rootChart then
+    ShowRootChart;
+
   var tb := new System.Windows.Controls.TextBlock;
   tb.Text := s;
   tb.FontSize := 14;
@@ -1029,21 +2526,114 @@ begin
 end;
 
 static procedure Plot.DrawPoints(chart: ChartWPF; x, y: array of real;
-  color: ColorWPF; size: real; marker: MarkerType; legend: string);
+  color: ColorWPF; size: real; marker: MarkerType; legend: string;
+  tooltips: array of string);
 begin
-  var g := CreatePointSeries(x, y, color, size, marker);
+  var g := CreatePointSeries(x, y, color, size, marker, tooltips);
+  InteractiveDataDisplay.WPF.Legend.SetIsVisible(g, legend <> nil);
 
   if legend <> nil then
   begin  
+    g.Description := legend;
+    if tooltips = nil then
+      g.TooltipTemplate := CreateXYTooltipTemplate;
+    chart.LegendVisibility := Visibility.Visible;
+  end;
+
+  AddSeries(chart, g);
+
+  if legend <> nil then
+    RefreshLegend(chart, g);
+end;
+
+static procedure Plot.RefreshLegend(chart: ChartWPF;
+  master: InteractiveDataDisplay.WPF.PlotBase);
+begin
+  chart.UpdateLayout;
+  var panel := new InteractiveDataDisplay.WPF.LegendItemsPanel;
+  panel.MasterPlot := master;
+  chart.LegendContent := panel;
+end;
+
+static procedure Plot.DrawBar(chart: ChartWPF; x, y: array of real;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  if y = nil then
+    raise new System.ArgumentNullException;
+
+  if (x <> nil) and (x.Length <> y.Length) then
+    raise new System.ArgumentException('Bar: array sizes mismatch');
+
+  if width <= 0 then
+    width := 0.8;
+
+  var g := new BarGraphWPF;
+  var fillColor := WithAlpha(color, alpha);
+  g.Color := new BrushWPF(fillColor);
+  g.Stroke := new BrushWPF(ColorWPF.FromArgb(180, color.R, color.G, color.B));
+  g.StrokeThickness := 1;
+  g.BarsWidth := width;
+
+  if legend <> nil then
+  begin
+    g.Description := legend;
+    chart.LegendVisibility := Visibility.Visible;
+  end;
+
+  g.PlotBars(x, y);
+
+  AddSeries(chart, g);
+end;
+
+static procedure Plot.DrawHorizontalBar(chart: ChartWPF; labels: array of string; values: array of real;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  if (labels = nil) or (values = nil) then
+    raise new System.ArgumentNullException;
+
+  if labels.Length <> values.Length then
+    raise new System.ArgumentException('Bar: labels and values sizes mismatch');
+
+  if values.Length = 0 then
+    exit;
+
+  if width <= 0 then
+    width := 0.75;
+
+  if width > 1 then
+    width := 1;
+
+  var g := new HorizontalBarPlot;
+  g.SetData(labels, values, color, width, alpha);
+
+  if legend <> nil then
+  begin
     g.Description := legend;
     chart.LegendVisibility := Visibility.Visible;
   end;
 
   AddSeries(chart, g);
+
+  var xmax := Max(0.0, values.Max);
+  if xmax <= 0 then
+    xmax := 1;
+
+  chart.PlotOriginX := 0;
+  chart.PlotWidth := xmax * 1.06;
+  chart.PlotOriginY := -0.5;
+  chart.PlotHeight := values.Length;
+
+  chart.ApplyTemplate;
+  chart.UpdateLayout;
+  HidePlotAxisInVisualTree(chart, AxisOrientation.Left);
+  AddCategoryLabelsToLeftSlot(chart, labels);
 end;
 
 static procedure Plot.DrawHeatmap(chart: ChartWPF; m: array[,] of real; names: array of string);
 begin
+  if chart = rootChart then
+    ShowRootChart;
+
   var rows := m.GetLength(0);
   var cols := m.GetLength(1);
 
@@ -1123,8 +2713,240 @@ begin
     end;
 end;
 
+static function Plot.CreateConfusionMatrixView(m: array[,] of real; classNames: array of string;
+  title: string; xlabel: string; ylabel: string; percentValues: boolean; sortClassNames: boolean): UIElement;
+begin
+  if m = nil then
+    raise new System.ArgumentNullException;
+
+  var rows := m.GetLength(0);
+  var cols := m.GetLength(1);
+
+  if rows <> cols then
+    raise new System.ArgumentException('ConfusionMatrix: matrix must be square');
+
+  if classNames = nil then
+  begin
+    classNames := new string[rows];
+    for var i := 0 to rows - 1 do
+      classNames[i] := i.ToString;
+  end;
+
+  if classNames.Length <> rows then
+    raise new System.ArgumentException('ConfusionMatrix: labels length must match matrix size');
+
+  if sortClassNames then
+    SortConfusionMatrixByClassNames(m, classNames);
+
+  var maxValue := 0.0;
+  for var i := 0 to rows - 1 do
+    for var j := 0 to cols - 1 do
+      maxValue := Max(maxValue, m[i, j]);
+
+  var outer := new GridWPF;
+  outer.Margin := new Thickness(4);
+
+  var outerTitleRow := new RowDefinition;
+  outerTitleRow.Height := GridLength.Auto;
+  outer.RowDefinitions.Add(outerTitleRow);
+  outer.RowDefinitions.Add(new RowDefinition);
+  var outerXLabelRow := new RowDefinition;
+  outerXLabelRow.Height := GridLength.Auto;
+  outer.RowDefinitions.Add(outerXLabelRow);
+  var outerYLabelColumn := new ColumnDefinition;
+  outerYLabelColumn.Width := GridLength.Auto;
+  outer.ColumnDefinitions.Add(outerYLabelColumn);
+  outer.ColumnDefinitions.Add(new ColumnDefinition);
+
+  var titleBlock := new TextBlock;
+  titleBlock.Name := 'PlotML_Title';
+  titleBlock.FontSize := 14;
+  titleBlock.FontWeight := FontWeights.SemiBold;
+  titleBlock.TextAlignment := TextAlignment.Center;
+  titleBlock.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+  titleBlock.Margin := new Thickness(0, 0, 0, 4);
+  SetOptionalTextBlockText(titleBlock, title);
+  GridWPF.SetRow(titleBlock, 0);
+  GridWPF.SetColumn(titleBlock, 1);
+  outer.Children.Add(titleBlock);
+
+  var yBlock := new TextBlock;
+  yBlock.Name := 'PlotML_YLabel';
+  yBlock.FontSize := 13;
+  yBlock.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+  yBlock.Margin := new Thickness(0, 0, 4, 0);
+  yBlock.LayoutTransform := new RotateTransform(-90);
+  SetOptionalTextBlockText(yBlock, ylabel);
+  GridWPF.SetRow(yBlock, 1);
+  GridWPF.SetColumn(yBlock, 0);
+  outer.Children.Add(yBlock);
+
+  var xBlock := new TextBlock;
+  xBlock.Name := 'PlotML_XLabel';
+  xBlock.FontSize := 13;
+  xBlock.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+  xBlock.Margin := new Thickness(0, 4, 0, 0);
+  SetOptionalTextBlockText(xBlock, xlabel);
+  GridWPF.SetRow(xBlock, 2);
+  GridWPF.SetColumn(xBlock, 1);
+  outer.Children.Add(xBlock);
+
+  var table := new GridWPF;
+  for var i := 0 to rows do
+    table.RowDefinitions.Add(new RowDefinition);
+  table.RowDefinitions[rows].Height := GridLength.Auto;
+
+  var rowLabelColumn := new ColumnDefinition;
+  rowLabelColumn.Width := GridLength.Auto;
+  table.ColumnDefinitions.Add(rowLabelColumn);
+  for var j := 0 to cols - 1 do
+    table.ColumnDefinitions.Add(new ColumnDefinition);
+
+  for var j := 0 to cols - 1 do
+  begin
+    var tb := new TextBlock;
+    tb.Text := classNames[j];
+    tb.FontSize := 12;
+    tb.TextAlignment := TextAlignment.Center;
+    tb.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+    tb.Margin := new Thickness(6, 6, 6, 0);
+    GridWPF.SetRow(tb, rows);
+    GridWPF.SetColumn(tb, j + 1);
+    table.Children.Add(tb);
+  end;
+
+  for var i := 0 to rows - 1 do
+  begin
+    var rowLabel := new TextBlock;
+    rowLabel.Text := classNames[i];
+    rowLabel.FontSize := 12;
+    rowLabel.TextAlignment := TextAlignment.Right;
+    rowLabel.HorizontalAlignment := System.Windows.HorizontalAlignment.Right;
+    rowLabel.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+    rowLabel.Margin := new Thickness(0, 4, 8, 4);
+    GridWPF.SetRow(rowLabel, i);
+    GridWPF.SetColumn(rowLabel, 0);
+    table.Children.Add(rowLabel);
+
+    for var j := 0 to cols - 1 do
+    begin
+      var v := m[i, j];
+      var border := new Border;
+      border.Background := new SolidColorBrush(ConfusionMatrixColor(v, maxValue));
+      border.BorderBrush := Brushes.White;
+      border.BorderThickness := new Thickness(0.5);
+
+      var valueText := new TextBlock;
+      if percentValues then
+        valueText.Text := $'{v * 100:F1}%'
+      else if Abs(v - Round(v)) < 1e-9 then
+        valueText.Text := Round(v).ToString
+      else
+        valueText.Text := $'{v:F2}';
+      valueText.FontSize := 12;
+      valueText.FontWeight := FontWeights.SemiBold;
+      valueText.TextAlignment := TextAlignment.Center;
+      valueText.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+      valueText.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+      valueText.Foreground :=
+        if (maxValue > 0) and (v / maxValue > 0.5) then Brushes.White else Brushes.DimGray;
+
+      border.Child := valueText;
+      GridWPF.SetRow(border, i);
+      GridWPF.SetColumn(border, j + 1);
+      table.Children.Add(border);
+    end;
+  end;
+
+  GridWPF.SetRow(table, 1);
+  GridWPF.SetColumn(table, 1);
+  outer.Children.Add(table);
+
+  Result := outer;
+end;
+
+static function Plot.CreateImageGridView(X: Matrix; width, height, startRow, count, cols: integer;
+  spacing: real; normalize, invert: boolean): UIElement;
+begin
+  ValidateImageGridArgs(X, width, height, startRow, count, cols, spacing);
+
+  var outer := new GridWPF;
+  outer.Margin := new Thickness(4);
+
+  var titleRow := new RowDefinition;
+  titleRow.Height := GridLength.Auto;
+  outer.RowDefinitions.Add(titleRow);
+  outer.RowDefinitions.Add(new RowDefinition);
+  var xLabelRow := new RowDefinition;
+  xLabelRow.Height := GridLength.Auto;
+  outer.RowDefinitions.Add(xLabelRow);
+
+  var yLabelColumn := new ColumnDefinition;
+  yLabelColumn.Width := GridLength.Auto;
+  outer.ColumnDefinitions.Add(yLabelColumn);
+  outer.ColumnDefinitions.Add(new ColumnDefinition);
+
+  var titleBlock := new TextBlock;
+  titleBlock.Name := 'PlotML_Title';
+  titleBlock.FontSize := 14;
+  titleBlock.FontWeight := FontWeights.SemiBold;
+  titleBlock.TextAlignment := TextAlignment.Center;
+  titleBlock.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+  titleBlock.Margin := new Thickness(0, 0, 0, 4);
+  SetOptionalTextBlockText(titleBlock, '');
+  GridWPF.SetRow(titleBlock, 0);
+  GridWPF.SetColumn(titleBlock, 1);
+  outer.Children.Add(titleBlock);
+
+  var yBlock := new TextBlock;
+  yBlock.Name := 'PlotML_YLabel';
+  yBlock.FontSize := 13;
+  yBlock.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+  yBlock.Margin := new Thickness(0, 0, 4, 0);
+  yBlock.LayoutTransform := new RotateTransform(-90);
+  SetOptionalTextBlockText(yBlock, '');
+  GridWPF.SetRow(yBlock, 1);
+  GridWPF.SetColumn(yBlock, 0);
+  outer.Children.Add(yBlock);
+
+  var xBlock := new TextBlock;
+  xBlock.Name := 'PlotML_XLabel';
+  xBlock.FontSize := 13;
+  xBlock.HorizontalAlignment := System.Windows.HorizontalAlignment.Center;
+  xBlock.Margin := new Thickness(0, 4, 0, 0);
+  SetOptionalTextBlockText(xBlock, '');
+  GridWPF.SetRow(xBlock, 2);
+  GridWPF.SetColumn(xBlock, 1);
+  outer.Children.Add(xBlock);
+
+  var host := new Border;
+  host.Background := Brushes.White;
+  host.ClipToBounds := true;
+
+  var image := new System.Windows.Controls.Image;
+  image.Source := CreateImageGridBitmap(X, width, height, startRow, count, cols, spacing, normalize, invert);
+  image.Tag := count;
+  image.Stretch := Stretch.Uniform;
+  image.HorizontalAlignment := System.Windows.HorizontalAlignment.Stretch;
+  image.VerticalAlignment := System.Windows.VerticalAlignment.Center;
+  RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
+  host.Child := image;
+
+  host.Loaded += (o, e) -> UpdateImageGridBitmap(image, host, X, width, height, startRow, count, cols, spacing, normalize, invert);
+  host.SizeChanged += (o, e) -> UpdateImageGridBitmap(image, host, X, width, height, startRow, count, cols, spacing, normalize, invert);
+
+  GridWPF.SetRow(host, 1);
+  GridWPF.SetColumn(host, 1);
+  outer.Children.Add(host);
+
+  Result := outer;
+end;
+
 class procedure Plot.AddSeries(chart: ChartWPF; series: UIElement);
 begin
+  if chart = rootChart then
+    ShowRootChart;
+
   var container := chart.Content as GridWPF;
 
   if container = nil then
@@ -1134,6 +2956,11 @@ begin
   end;
 
   container.Children.Add(series);
+end;
+
+class function Plot.PaletteColor(i: integer): ColorWPF;
+begin
+  Result := ColorFromPalette(currentPalette, i);
 end;
 
 class procedure Plot.LineGraph(x, y: array of real;
@@ -1147,25 +2974,54 @@ begin
   end);
 end;
 
-static procedure Plot.Points(x, y: array of real; 
-  color: ColorWPF; size: real; marker: MarkerType; legend: string);
+class procedure Plot.Line(k, b: real; color: ColorWPF; thickness: real; legend: string);
 begin
+  Line(k, -1, b, color, thickness, legend);
+end;
+
+class procedure Plot.Line(A, B, C: real; color: ColorWPF; thickness: real; legend: string);
+begin
+  RunUI(() ->
+  begin
+    var clr := if color<>DefaultColor then color else Colors.Red;
+
+    DrawImplicitLine(rootChart, A, B, C, clr, thickness, legend);
+  end);
+end;
+
+class procedure Plot.Point(x, y: real; color: ColorWPF; size: real; marker: MarkerType; legend: string);
+begin
+  var clr := if color<>DefaultColor then color else Colors.Black;
+  Points(Arr(x), Arr(y), clr, size, marker, legend);
+end;
+
+static procedure Plot.Points(x, y: array of real; 
+  color: ColorWPF; size: real; marker: MarkerType; legend: string;
+  tooltips: array of string);
+begin
+  ValidatePointTooltips(x, y, tooltips);
   RunUI(() ->
   begin
     var clr := if color<>DefaultColor then color else NextRootColor;
 
-    DrawPoints(rootChart, x, y, clr, size, marker, legend);
+    DrawPoints(rootChart, x, y, clr, size, marker, legend, tooltips);
   end);
 end;
 
-static procedure Plot.Points(x, y: array of real; labels: array of integer;
-  color: ColorWPF; size: real; marker: MarkerType);
+static procedure Plot.Points(points: array of Vector;
+  color: ColorWPF; size: real; marker: MarkerType; legend: string;
+  tooltips: array of string);
 begin
-  if (x = nil) or (y = nil) or (labels = nil) then
-    raise new System.ArgumentNullException;
+  var x: array of real;
+  var y: array of real;
+  PointsVectorsToXY(points, x, y);
+  Plot.Points(x, y, color, size, marker, legend, tooltips);
+end;
 
-  if (x.Length <> y.Length) or (x.Length <> labels.Length) then
-    raise new System.ArgumentException('Points: array sizes mismatch');
+static procedure Plot.Points(x, y: array of real; labels: array of integer;
+  color: ColorWPF; size: real; marker: MarkerType; classNames: array of string);
+begin
+  ValidateLabeledPoints(x, y, labels, classNames);
 
   var classes := labels.Distinct.ToArray;
   &Array.Sort(classes);
@@ -1179,13 +3035,62 @@ begin
     var xs := ind.ConvertAll(i -> x[i]);
     var ys := ind.ConvertAll(i -> y[i]);
 
-    var clr :=
-      if color<>DefaultColor
+    var clr: ColorWPF :=
+      if c = -1
+      then Colors.Black
+      else if color<>DefaultColor
       then color
-      else pal.Colors[c mod pal.Colors.Length];
+      else ColorFromPalette(pal, c);
 
-    Points(xs, ys, clr, size, marker, nil);
+    var legend := if classNames = nil then nil else classNames[c];
+    Points(xs, ys, clr, size, marker, legend);
   end;
+end;
+
+static procedure Plot.Bar(y: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  var x: array of real := nil;
+  Bar(x, y, color, width, alpha, legend);
+end;
+
+static procedure Plot.Bar(y: array of integer; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Bar(IntArrayToReal(y), color, width, alpha, legend);
+  RunUI(() -> SetIntegerValueAxis(rootChart, AxisOrientation.Left, y));
+end;
+
+static procedure Plot.Bar(x, y: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  RunUI(() ->
+  begin
+    var clr := if color<>DefaultColor then color else NextRootColor;
+
+    DrawBar(rootChart, x, y, clr, width, alpha, legend);
+  end);
+end;
+
+static procedure Plot.Bar(x: array of real; y: array of integer;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  Bar(x, IntArrayToReal(y), color, width, alpha, legend);
+  RunUI(() -> SetIntegerValueAxis(rootChart, AxisOrientation.Left, y));
+end;
+
+static procedure Plot.HorizontalBar(labels: array of string; values: array of real; color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  RunUI(() ->
+  begin
+    var clr := if color<>DefaultColor then color else NextRootColor;
+
+    DrawHorizontalBar(rootChart, labels, values, clr, width, alpha, legend);
+  end);
+end;
+
+static procedure Plot.HorizontalBar(labels: array of string; values: array of integer;
+  color: ColorWPF; width: real; alpha: real; legend: string);
+begin
+  HorizontalBar(labels, IntArrayToReal(values), color, width, alpha, legend);
+  RunUI(() -> SetIntegerValueAxis(rootChart, AxisOrientation.Bottom, values));
 end;
 
 static procedure Plot.Heatmap(m: array[,] of real);
@@ -1201,6 +3106,163 @@ begin
   RunUI(() ->
   begin
     DrawHeatmap(rootChart, m, names);
+  end);
+end;
+
+static procedure Plot.Image(values: array of real; width, height: integer; invert: boolean);
+begin
+  ImageGrid(SingleImageMatrix(values, width, height), width, height,
+    0, 1, 1, 0.0, false, invert);
+end;
+
+static procedure Plot.ImageGrid(X: Matrix; width, height, startRow, count, cols: integer;
+  spacing: real; normalize, invert: boolean);
+begin
+  RunUI(() ->
+  begin
+    var view := CreateImageGridView(X, width, height, startRow, count, cols, spacing, normalize, invert);
+    win.Content := view;
+    rootTitleBlock := FindTextBlockByName(view, 'PlotML_Title');
+    rootXLabelBlock := FindTextBlockByName(view, 'PlotML_XLabel');
+    rootYLabelBlock := FindTextBlockByName(view, 'PlotML_YLabel');
+    gridMode := false;
+  end);
+end;
+
+static procedure Plot.ConfusionMatrix(m: array[,] of integer; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  RunUI(() ->
+  begin
+    var view := CreateConfusionMatrixView(
+      NormalizeConfusionMatrix(IntMatrixToReal(m), normalize),
+      classNames, '', '', '', normalize <> MatrixNormalization.None, sortClassNames);
+    win.Content := view;
+    rootTitleBlock := FindTextBlockByName(view, 'PlotML_Title');
+    rootXLabelBlock := FindTextBlockByName(view, 'PlotML_XLabel');
+    rootYLabelBlock := FindTextBlockByName(view, 'PlotML_YLabel');
+    gridMode := false;
+  end);
+end;
+
+static procedure Plot.ConfusionMatrix(m: Matrix; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  RunUI(() ->
+  begin
+    var view := CreateConfusionMatrixView(
+      NormalizeConfusionMatrix(m.Data, normalize),
+      classNames, '', '', '', normalize <> MatrixNormalization.None, sortClassNames);
+    win.Content := view;
+    rootTitleBlock := FindTextBlockByName(view, 'PlotML_Title');
+    rootXLabelBlock := FindTextBlockByName(view, 'PlotML_XLabel');
+    rootYLabelBlock := FindTextBlockByName(view, 'PlotML_YLabel');
+    gridMode := false;
+  end);
+end;
+
+static procedure Plot.ConfusionMatrix(cm: MetricsABC.ConfusionMatrix; classNames: array of string; normalize: MatrixNormalization; sortClassNames: boolean);
+begin
+  if cm = nil then
+    raise new System.ArgumentNullException;
+
+  if classNames = nil then
+    classNames := cm.Labels.Select(x -> x.ToString).ToArray;
+
+  ConfusionMatrix(cm.Matrix, classNames, normalize, sortClassNames);
+end;
+
+static procedure Plot.ValidationCurve(
+  curve: ValidationML.ValidationCurveResult;
+  xLabel: string;
+  yLabel: string;
+  title: string;
+  trainColor: ColorWPF;
+  validationColor: ColorWPF;
+  markerSize: real;
+  thickness: real);
+begin
+  if curve = nil then
+    raise new System.ArgumentNullException('curve');
+
+  if curve.ParameterValues = nil then
+    raise new System.ArgumentException('ValidationCurve: ParameterValues is nil');
+
+  if curve.TrainMean = nil then
+    raise new System.ArgumentException('ValidationCurve: TrainMean is nil');
+
+  if curve.ValidationMean = nil then
+    raise new System.ArgumentException('ValidationCurve: ValidationMean is nil');
+
+  var n := curve.ParameterValues.Length;
+  if (curve.TrainMean.Length <> n) or (curve.ValidationMean.Length <> n) then
+    raise new System.ArgumentException('ValidationCurve: array sizes mismatch');
+
+  RunUI(() ->
+  begin
+    var trainClr :=
+      if trainColor <> DefaultColor then trainColor else Colors.Blue;
+    var validationClr :=
+      if validationColor <> DefaultColor then validationColor else Colors.Red;
+
+    DrawLine(rootChart, curve.ParameterValues.Data, curve.TrainMean.Data, trainClr, thickness, nil);
+    DrawPoints(rootChart, curve.ParameterValues.Data, curve.TrainMean.Data, trainClr, markerSize, MarkerType.Circle, nil, nil);
+
+    DrawLine(rootChart, curve.ParameterValues.Data, curve.ValidationMean.Data, validationClr, thickness, nil);
+    DrawPoints(rootChart, curve.ParameterValues.Data, curve.ValidationMean.Data, validationClr, markerSize, MarkerType.Circle, nil, nil);
+
+    if title <> nil then
+      SetTitle(title);
+    if xLabel <> nil then
+      SetXLabel(xLabel);
+    if yLabel <> nil then
+      SetYLabel(yLabel);
+  end);
+end;
+
+static procedure Plot.LearningCurve(
+  curve: ValidationML.LearningCurveResult;
+  xLabel: string;
+  yLabel: string;
+  title: string;
+  trainColor: ColorWPF;
+  validationColor: ColorWPF;
+  markerSize: real;
+  thickness: real);
+begin
+  if curve = nil then
+    raise new System.ArgumentNullException('curve');
+
+  if curve.TrainSizes = nil then
+    raise new System.ArgumentException('LearningCurve: TrainSizes is nil');
+
+  if curve.TrainMean = nil then
+    raise new System.ArgumentException('LearningCurve: TrainMean is nil');
+
+  if curve.ValidationMean = nil then
+    raise new System.ArgumentException('LearningCurve: ValidationMean is nil');
+
+  var n := curve.TrainSizes.Length;
+  if (curve.TrainMean.Length <> n) or (curve.ValidationMean.Length <> n) then
+    raise new System.ArgumentException('LearningCurve: array sizes mismatch');
+
+  RunUI(() ->
+  begin
+    var trainClr :=
+      if trainColor <> DefaultColor then trainColor else Colors.Blue;
+    var validationClr :=
+      if validationColor <> DefaultColor then validationColor else Colors.Red;
+
+    DrawLine(rootChart, curve.TrainSizes.Data, curve.TrainMean.Data, trainClr, thickness, nil);
+    DrawPoints(rootChart, curve.TrainSizes.Data, curve.TrainMean.Data, trainClr, markerSize, MarkerType.Circle, nil, nil);
+
+    DrawLine(rootChart, curve.TrainSizes.Data, curve.ValidationMean.Data, validationClr, thickness, nil);
+    DrawPoints(rootChart, curve.TrainSizes.Data, curve.ValidationMean.Data, validationClr, markerSize, MarkerType.Circle, nil, nil);
+
+    if title <> nil then
+      SetTitle(title);
+    if xLabel <> nil then
+      SetXLabel(xLabel);
+    if yLabel <> nil then
+      SetYLabel(yLabel);
   end);
 end;
 
@@ -1229,9 +3291,9 @@ end;
 
 
 static procedure Plot.Hist(x: Vector; bins: integer;
-  color: ColorWPF; alpha: real; legend: string);
+  color: ColorWPF; alpha: real; legend: string; edges: System.Array);
 begin
-  Hist(x.Data, bins, color, alpha, legend);
+  Hist(x.Data, bins, color, alpha, legend, edges);
 end;
 
 // --- Matrix overloads
@@ -1285,9 +3347,248 @@ begin
   Result := counts;
 end;
 
-class procedure Plot.PairPlot(X: array[,] of real; labels: array of integer; names: array of string);
+function PairPlotNames(names: array of string; n: integer): array of string;
 begin
-  var n := names.Length;
+  if names = nil then
+  begin
+    Result := new string[n];
+    for var i := 0 to n - 1 do
+      Result[i] := $'x{i + 1}';
+    exit;
+  end;
+  
+  if names.Length <> n then
+    raise new System.ArgumentException('PairPlot: names length must match column count');
+  
+  Result := names;
+end;
+
+function PairPlotValueBins(values: array of real; bins: integer): array of integer;
+begin
+  if values = nil then
+    raise new System.ArgumentNullException;
+  
+  if bins < 2 then
+    bins := 2;
+  
+  Result := new integer[values.Length];
+  
+  if values.Length = 0 then
+    exit;
+  
+  var vmin := values.Min;
+  var vmax := values.Max;
+  
+  if vmin = vmax then
+    exit;
+  
+  var w := (vmax - vmin) / bins;
+  if w <= 0 then
+    exit;
+  
+  for var i := 0 to values.Length - 1 do
+  begin
+    var k := trunc((values[i] - vmin) / w);
+    if k < 0 then
+      k := 0;
+    if k >= bins then
+      k := bins - 1;
+    Result[i] := k;
+  end;
+end;
+
+function EvenlySpacedIndices(n, maxPoints: integer): array of integer;
+begin
+  if (maxPoints <= 0) or (n <= maxPoints) then
+  begin
+    Result := ArrGen(n, i -> i);
+    exit;
+  end;
+  
+  Result := new integer[maxPoints];
+  
+  if maxPoints = 1 then
+  begin
+    Result[0] := 0;
+    exit;
+  end;
+  
+  for var k := 0 to maxPoints - 1 do
+    Result[k] := Round(k * (n - 1.0) / (maxPoints - 1));
+end;
+
+function SubsampleMatrixRows(X: array[,] of real; indices: array of integer): array[,] of real;
+begin
+  var rows := indices.Length;
+  var cols := X.GetLength(1);
+  Result := new real[rows, cols];
+  
+  for var i := 0 to rows - 1 do
+  begin
+    var srcRow := indices[i];
+    for var j := 0 to cols - 1 do
+      Result[i, j] := X[srcRow, j];
+  end;
+end;
+
+function SubsampleVector(values: array of real; indices: array of integer): array of real;
+begin
+  Result := new real[indices.Length];
+  for var i := 0 to indices.Length - 1 do
+    Result[i] := values[indices[i]];
+end;
+
+function SubsampleLabels(labels: array of integer; indices: array of integer): array of integer;
+begin
+  Result := new integer[indices.Length];
+  for var i := 0 to indices.Length - 1 do
+    Result[i] := labels[indices[i]];
+end;
+
+function PairPlotValueColor(binIndex, bins: integer): ColorWPF;
+begin
+  var anchors := Arr(
+    Color.FromRgb(43, 92, 168),   // холодный синий
+    Color.FromRgb(104, 162, 214), // голубой
+    Color.FromRgb(220, 220, 210), // нейтральный светлый
+    Color.FromRgb(236, 167, 84),  // тёплый оранжевый
+    Color.FromRgb(191, 54, 54)    // тёплый красный
+  );
+  
+  if bins <= 1 then
+    exit(anchors[0]);
+  
+  var t := binIndex / (bins - 1.0);
+  var scaled := t * (anchors.Length - 1);
+  var k := trunc(scaled);
+  
+  if k >= anchors.Length - 1 then
+    exit(anchors[anchors.Length - 1]);
+  
+  Result := LerpColor(anchors[k], anchors[k + 1], scaled - k);
+end;
+
+
+class procedure Plot.PairPlot(X: array[,] of real; names: array of string; maxPoints: integer);
+begin
+  var sampleIdx := EvenlySpacedIndices(X.GetLength(0), maxPoints);
+  X := SubsampleMatrixRows(X, sampleIdx);
+  
+  var noLabels: array of integer := nil;
+  PairPlot(X, noLabels, PairPlotNames(names, X.GetLength(1)), 0);
+end;
+
+class procedure Plot.PairPlot(X: array[,] of real; values: array of real; names: array of string; bins: integer; maxPoints: integer);
+begin
+  if values = nil then
+    raise new System.ArgumentNullException;
+  
+  var sampleIdx := EvenlySpacedIndices(X.GetLength(0), maxPoints);
+  X := SubsampleMatrixRows(X, sampleIdx);
+  values := SubsampleVector(values, sampleIdx);
+  
+  var n := X.GetLength(1);
+  names := PairPlotNames(names, n);
+  
+  if X.GetLength(0) <> values.Length then
+    raise new System.ArgumentException('PairPlot: values length must match row count');
+  
+  if bins < 2 then
+    bins := 2;
+  
+  var valueBins := PairPlotValueBins(values, bins);
+  var fig := Plot.Grid(n, n);
+  
+  var xmin := new real[n];
+  var xmax := new real[n];
+  var ymax := new real[n];
+  var histBins := 20;
+  
+  for var j := 0 to n - 1 do
+  begin
+    var col := X.Col(j);
+    xmin[j] := Floor(col.Min);
+    xmax[j] := Ceil(col.Max);
+    var counts := HistogramCounts(col, histBins, xmin[j], xmax[j]);
+    ymax[j] := counts.Max * 1.1;
+  end;
+  
+  for var i := 0 to n - 1 do
+  for var j := 0 to n - 1 do
+  begin
+    var ax := fig[i, j];
+    
+    if i = j then
+    begin
+      var xs := X.Col(i);
+      var ys := xs;
+      
+      for var b := 0 to bins - 1 do
+      begin
+        var ind := valueBins.Indices(v -> v = b).ToArray;
+        if ind.Length = 0 then
+          continue;
+        
+        var xb := ind.ConvertAll(k -> xs[k]);
+        var yb := ind.ConvertAll(k -> ys[k]);
+        ax.Points(xb, yb, PairPlotValueColor(b, bins), size := 3);
+      end;
+      
+      ax.XLim(xmin[j], xmax[j]);
+      ax.YLim(xmin[i], xmax[i]);
+    end
+    else
+    begin
+      var xs := X.Col(j);
+      var ys := X.Col(i);
+      
+      for var b := 0 to bins - 1 do
+      begin
+        var ind := valueBins.Indices(v -> v = b).ToArray;
+        if ind.Length = 0 then
+          continue;
+        
+        var xb := ind.ConvertAll(k -> xs[k]);
+        var yb := ind.ConvertAll(k -> ys[k]);
+        ax.Points(xb, yb, PairPlotValueColor(b, bins), size := 3);
+      end;
+      
+      ax.XLim(xmin[j], xmax[j]);
+      ax.YLim(xmin[i], xmax[i]);
+    end;
+    
+    if i = n - 1 then
+      ax.XLabel := names[j];
+    //else ax.HideXAxis;
+    
+    if j = 0 then
+      ax.YLabel := names[i];
+   // else ax.HideYAxis;
+
+  end;
+  
+
+  RunUI(() ->
+  begin
+    //fig[1,0].chart.Margin := new Thickness(8, 0, 2, 0);
+    //fig[2,0].chart.Margin := new Thickness(14, 0, 2, 0);
+    //fig[3,0].chart.Margin := new Thickness(17, 0, 2, 0);
+    AlignPairPlotSlots(fig);
+  end);
+
+end;
+
+class procedure Plot.PairPlot(X: array[,] of real; labels: array of integer; names: array of string; maxPoints: integer);
+begin
+  if labels <> nil then
+  begin
+    var sampleIdx := EvenlySpacedIndices(X.GetLength(0), maxPoints);
+    X := SubsampleMatrixRows(X, sampleIdx);
+    labels := SubsampleLabels(labels, sampleIdx);
+  end;
+  
+  var n := X.GetLength(1);
+  names := PairPlotNames(names, n);
   var bins := 20;
 
   var fig := Plot.Grid(n,n);
@@ -1334,13 +3635,18 @@ begin
       ax.YLim(xmin[i],xmax[i]);
     end;
 
-    // подписи только по краям
-    if i=n-1 then
-      ax.XLabel(names[j]);
-
-    if j=0 then
-      ax.YLabel(names[i]);
+    if i = n - 1 then
+      ax.XLabel := names[j];
+    
+    if j = 0 then
+      ax.YLabel := names[i];
   end;
+
+  RunUI(() ->
+  begin    
+    AlignPairPlotSlots(fig);
+    //WidenFirstPairPlotColumn(fig, 10);
+  end);
 end;
 
 class procedure Plot.EnsureAxes(chart: ChartWPF);
@@ -1365,12 +3671,25 @@ begin
 end;
 
 static procedure Plot.Hist(x: array of real; bins: integer;
-  color: ColorWPF; alpha: real; legend: string);
+  color: ColorWPF; alpha: real; legend: string; edges: System.Array);
 begin
+  if (bins <> 0) and (edges <> nil) then
+    raise new System.ArgumentException(
+      'Hist: specify either bins or edges, not both / задайте либо bins, либо edges');
+
   RunUI(() ->
   begin
-    Plot.DrawHist(rootChart, x, bins, color, alpha, legend);
+    if edges = nil then
+      Plot.DrawHist(rootChart, x, bins, color, alpha, legend)
+    else
+      Plot.DrawHist(rootChart, x, HistogramEdgesToReal(edges), color, alpha, legend);
   end);
+end;
+
+static procedure Plot.Hist(x: array of integer; bins: integer;
+  color: ColorWPF; alpha: real; legend: string; edges: System.Array);
+begin
+  Hist(IntArrayToReal(x), bins, color, alpha, legend, edges);
 end;
 
 static procedure Plot.DrawHist(chart: ChartWPF; x: array of real;
@@ -1402,6 +3721,29 @@ begin
   
   chart.PlotOriginX := xmin;
   chart.PlotWidth := xmax - xmin;
+  chart.PlotOriginY := 0;
+  chart.PlotHeight := hist.MaxCount * 1.1;
+end;
+
+static procedure Plot.DrawHist(chart: ChartWPF; x, edges: array of real;
+  color: ColorWPF; alpha: real; legend: string);
+begin
+  EnsureAxes(chart);
+
+  var hist := new HistogramPlot;
+  hist.Color := if color<>DefaultColor then color else NextRootColor;
+  hist.Alpha := alpha;
+  hist.SetData(x, edges);
+
+  if legend <> nil then
+  begin
+    hist.Description := legend;
+    chart.LegendVisibility := Visibility.Visible;
+  end;
+
+  AddSeries(chart, hist);
+  chart.PlotOriginX := edges[0];
+  chart.PlotWidth := edges[edges.Length - 1] - edges[0];
   chart.PlotOriginY := 0;
   chart.PlotHeight := hist.MaxCount * 1.1;
 end;
@@ -1505,37 +3847,76 @@ end;
 
 procedure HistogramPlot.SetData(x: array of real);
 begin
-  Children.Clear;
-  fBins.Clear;
-
-  if x=nil then exit;
-  if x.Length=0 then exit;
+  if x = nil then
+    exit;
+  if x.Length = 0 then
+    exit;
 
   var xmin := if not real.IsNaN(MinValue) then Floor(MinValue) else Floor(x.Min);
   var xmax := if not real.IsNaN(MaxValue) then Ceil(MaxValue) else Ceil(x.Max);
 
-  if xmax=xmin then exit;
+  if xmax = xmin then
+    exit;
 
   var w := (xmax-xmin)/fBinsCount;
+  var edges := ArrGen(fBinsCount + 1, i -> xmin + i*w);
+  SetData(x, edges);
+end;
 
+procedure HistogramPlot.SetData(x, edges: array of real);
+begin
+  Children.Clear;
+  fBins.Clear;
+  fMaxCount := 0;
+
+  if x = nil then
+    exit;
+  if edges = nil then
+    raise new System.ArgumentNullException('edges');
+  if edges.Length < 2 then
+    raise new System.ArgumentException(
+      'Hist: edges must contain at least two values / границы должны содержать минимум два значения');
+
+  for var i := 0 to edges.Length - 1 do
+    if real.IsNaN(edges[i]) or real.IsInfinity(edges[i]) then
+      raise new System.ArgumentException(
+        'Hist: edges must be finite / границы должны быть конечными числами');
+
+  for var i := 1 to edges.Length - 1 do
+    if edges[i] <= edges[i - 1] then
+      raise new System.ArgumentException(
+        'Hist: edges must be strictly increasing / границы должны строго возрастать');
+
+  fBinsCount := edges.Length - 1;
   var counts := new integer[fBinsCount];
 
   foreach var v in x do
   begin
-    var k := trunc((v-xmin)/w);
-    if k>=fBinsCount then k := fBinsCount-1;
-    if k<0 then k := 0;
-    counts[k] += 1;
+    if real.IsNaN(v) or (v < edges[0]) or (v > edges[edges.Length - 1]) then
+      continue;
+
+    var k := -1;
+    if v = edges[edges.Length - 1] then
+      k := fBinsCount - 1
+    else
+      for var i := 0 to fBinsCount - 1 do
+        if (v >= edges[i]) and (v < edges[i + 1]) then
+        begin
+          k := i;
+          break;
+        end;
+
+    if k >= 0 then
+      counts[k] += 1;
   end;
-  
 
   var brush := new SolidColorBrush(fColor);
   brush.Opacity := fAlpha;
 
-  for var i:=0 to fBinsCount-1 do
+  for var i := 0 to fBinsCount - 1 do
   begin
-    var x0 := xmin + i*w;
-    var x1 := x0 + w;
+    var x0 := edges[i];
+    var x1 := edges[i + 1];
     var h := counts[i];
 
     var poly := new Polygon;
@@ -1558,6 +3939,151 @@ begin
   end;
 
   fMaxCount := counts.Max;
+end;
+
+constructor ImplicitLinePlot.Create(A, B, C: real; color: ColorWPF; thickness: real);
+begin
+  fA := A;
+  fB := B;
+  fC := C;
+  fStroke := new SolidColorBrush(color);
+  fStrokeThickness := thickness;
+  IsAutoFitEnabled := false;
+  PlotTransformChanged += OnPlotTransformChanged;
+end;
+
+function ImplicitLinePlot.IsFinite(x: real): boolean;
+begin
+  Result := not real.IsNaN(x) and not real.IsInfinity(x);
+end;
+
+procedure ImplicitLinePlot.OnPlotTransformChanged(sender: object; e: EventArgs);
+begin
+  InvalidateVisual;
+end;
+
+function ImplicitLinePlot.ComputeBounds: InteractiveDataDisplay.WPF.DataRect;
+begin
+  Result := InteractiveDataDisplay.WPF.DataRect.Empty;
+end;
+
+procedure ImplicitLinePlot.OnRender(dc: DrawingContext);
+begin
+  inherited OnRender(dc);
+
+  if (Abs(fA) < 1e-12) and (Abs(fB) < 1e-12) then
+    exit;
+
+  var r := ActualPlotRect;
+  if r.IsEmpty then
+    exit;
+
+  var xmin := r.XMin;
+  var xmax := r.XMax;
+  var ymin := r.YMin;
+  var ymax := r.YMax;
+
+  var pts := new List<Point>;
+
+  if Abs(fB) > 1e-12 then
+  begin
+    var y := (-fA * xmin - fC) / fB;
+    if IsFinite(y) and (y >= ymin - 1e-9) and (y <= ymax + 1e-9) then
+      pts.Add(new Point(xmin, y));
+
+    y := (-fA * xmax - fC) / fB;
+    if IsFinite(y) and (y >= ymin - 1e-9) and (y <= ymax + 1e-9) then
+      pts.Add(new Point(xmax, y));
+  end;
+
+  if Abs(fA) > 1e-12 then
+  begin
+    var x := (-fB * ymin - fC) / fA;
+    if IsFinite(x) and (x >= xmin - 1e-9) and (x <= xmax + 1e-9) then
+      pts.Add(new Point(x, ymin));
+
+    x := (-fB * ymax - fC) / fA;
+    if IsFinite(x) and (x >= xmin - 1e-9) and (x <= xmax + 1e-9) then
+      pts.Add(new Point(x, ymax));
+  end;
+
+  if pts.Count < 2 then
+    exit;
+
+  var p1 := pts[0];
+  var p2 := pts[1];
+
+  for var i := 1 to pts.Count - 1 do
+    if Abs(pts[i].X - p1.X) + Abs(pts[i].Y - p1.Y) > 1e-9 then
+    begin
+      p2 := pts[i];
+      break;
+    end;
+
+  if Abs(p2.X - p1.X) + Abs(p2.Y - p1.Y) <= 1e-9 then
+    exit;
+
+  var s1 := new Point(LeftFromX(p1.X), TopFromY(p1.Y));
+  var s2 := new Point(LeftFromX(p2.X), TopFromY(p2.Y));
+
+  dc.DrawLine(new Pen(fStroke, fStrokeThickness), s1, s2);
+end;
+
+constructor HorizontalBarPlot.Create;
+begin
+  IsAutoFitEnabled := false;
+end;
+
+procedure HorizontalBarPlot.SetData(labels: array of string; values: array of real;
+  color: ColorWPF; width: real; alpha: real);
+begin
+  Children.Clear;
+  fElements.Clear;
+
+  if (labels = nil) or (values = nil) then
+    exit;
+
+  if labels.Length <> values.Length then
+    exit;
+
+  if values.Length = 0 then
+    exit;
+
+  var xmax := Max(0.0, values.Max);
+  if xmax <= 0 then
+    xmax := 1;
+
+  var barLeft := 0.0;
+
+  var fill := new SolidColorBrush(WithAlpha(color, alpha));
+  var stroke := new SolidColorBrush(ColorWPF.FromArgb(180, color.R, color.G, color.B));
+  var halfWidth := width / 2;
+  var n := values.Length;
+
+  for var i := 0 to n - 1 do
+  begin
+    var y := n - 1 - i;
+    var v := Max(0.0, values[i]);
+    var x0 := barLeft;
+    var x1 := barLeft + v;
+
+    var poly := new Polygon;
+    var pts := new PointCollection;
+
+    pts.Add(new Point(x0, y - halfWidth));
+    pts.Add(new Point(x0, y + halfWidth));
+    pts.Add(new Point(x1, y + halfWidth));
+    pts.Add(new Point(x1, y - halfWidth));
+
+    PlotWPF.SetPoints(poly, pts);
+    poly.Fill := fill;
+    poly.Stroke := stroke;
+    poly.StrokeThickness := 0.7;
+
+    Children.Add(poly);
+    fElements.Add(poly);
+
+  end;
 end;
 
 constructor HeatmapPlot.Create;

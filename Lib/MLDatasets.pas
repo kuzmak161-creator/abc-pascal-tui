@@ -19,15 +19,27 @@ type
   /// и целевых значений для обучения моделей
   Dataset = class
   private
+    fData: DataFrame;
     function ValueLabel(feature, value: string): string;
     function CloneMeta(df: DataFrame): Dataset;
+    function GetCategoricalFeatures: array of string;
   public
     FeatureLabels: Dictionary<string,string>;
     ValueLabels: Dictionary<string,Dictionary<string,string>>;
     Description: string;
 
+    constructor Create;
+
+    /// Создаёт Dataset на основе готовой таблицы данных и основных метаданных задачи.
+    static function FromData(
+      df: DataFrame;
+      task: TaskType;
+      features: array of string;
+      target: string := nil
+    ): Dataset;
+
     auto property Name: string;
-    auto property Data: DataFrame;
+    property Data: DataFrame read fData;
     auto property Features: array of string;
     auto property Target: string;
     auto property Task: TaskType;
@@ -65,8 +77,32 @@ type
     function RowCount: integer := Data.RowCount;
     
     function GetFeatureColumns: array of string;
+    property CategoricalFeatures: array of string read GetCategoricalFeatures;
     
     function HasTarget: boolean;
+  end;
+
+  /// Кодирует target-колонку классификационного Dataset в массив целых меток.
+  /// Используется только для целевой переменной, не для признаков.
+  LabelEncoder = class
+  private
+    fClasses: array of string;
+    fClassToIndex: Dictionary<string, integer>;
+    
+    function GetClasses: array of string;
+    procedure EnsureFitted;
+    procedure CheckDataset(ds: Dataset);
+    function TargetLabels(ds: Dataset): array of string;
+  public
+    function Fit(ds: Dataset): LabelEncoder;
+    function Transform(ds: Dataset): array of integer;
+    function FitTransform(ds: Dataset): array of integer;
+    
+    property Classes: array of string read GetClasses;
+    
+    function ClassName(index: integer): string;
+    function ClassIndex(name: string): integer;
+    function Decode(y: array of integer): array of string;
   end;
 
   /// Набор генераторов и загрузчиков датасетов для задач машинного обучения.
@@ -104,7 +140,7 @@ type
       classBalance: real := 1.0;
       noisePoints: integer := 0;
       shuffle: boolean := true;
-      seed: integer := -1): (Matrix, Vector);
+      seed: integer := -1): (Matrix, array of integer);
       
     /// Генерирует синтетический датасет «две луны» (two interleaving moons),
     /// часто используемый для демонстрации алгоритмов классификации и кластеризации.
@@ -118,7 +154,7 @@ type
       n: integer := 300;
       noise: real := 0.05;
       shuffle: boolean := true;
-      seed: integer := -1): (Matrix, Vector);
+      seed: integer := -1): (Matrix, array of integer);
     
     /// Генерирует синтетический датасет для задачи регрессии.
     /// Данные создаются по модели y = Xβ + f(X) + ε, где:
@@ -172,7 +208,7 @@ type
       flipProb: real := 0.0;
       scale: real := 1.0;
       shuffle: boolean := true;
-      seed: integer := -1): (Matrix, Vector);
+      seed: integer := -1): (Matrix, array of integer);
     
     /// Генерирует синтетический датасет в виде спиралей.
     /// Используется для демонстрации сложных нелинейных границ
@@ -192,7 +228,7 @@ type
       turns: real := 3.0;
       radius: real := 1.0;
       shuffle: boolean := true;
-      seed: integer := -1): (Matrix, Vector);
+      seed: integer := -1): (Matrix, array of integer);
 
     /// Генерирует синтетический датасет для задачи классификации.
     /// Формирует линейно (или почти линейно) разделимые классы с контролируемым шумом.
@@ -217,7 +253,7 @@ type
       flipProb: real := 0.0;
       classBalance: real := 0.5;
       shuffle: boolean := true;
-      seed: integer := -1): (Matrix, Vector);      
+      seed: integer := -1): (Matrix, array of integer);      
     
     /// Загружает датасет по имени.
     ///
@@ -263,6 +299,13 @@ type
 
     /// Датасет пассажиров Титаника (задача классификации)
     static function TitanicRu: Dataset;
+
+    /// Датасет цен на автомобили с пробегом (задача регрессии)
+    static function UsedCarsPrice: Dataset;
+
+    /// Сбалансированный набор MNIST из 5000 изображений для классификации рукописных цифр
+    static function MnistSmall: Dataset;
+
     
     {/// Датасет результатов экзамена студентов (классификация)
     static function StudentExam: Dataset;
@@ -289,6 +332,18 @@ implementation
 uses MLExceptions;
 uses DataAdapters;
 uses DataFrameABCCore;
+
+constructor Dataset.Create;
+begin
+  fData := nil;
+  Features := [];
+  Target := nil;
+  Task := TaskType.Clustering;
+  Name := nil;
+  Description := '';
+  FeatureLabels := new Dictionary<string,string>;
+  ValueLabels := new Dictionary<string,Dictionary<string,string>>;
+end;
 
 const
   ER_PARAM_GT_ZERO =
@@ -317,12 +372,27 @@ const
     'Признак "{0}" не найден в датасете!!Feature column "{0}" not found in dataset';
   ER_DATASET_FEATURE_EQUALS_TARGET =
     'Признак "{0}" совпадает с целевой переменной!!Feature "{0}" equals target column';
+  ER_DATASET_FEATURES_EMPTY =
+    'Список признаков не должен быть пустым!!Feature list must not be empty';
+  ER_DATASET_META_FEATURE_NOT_IN_FEATURES =
+    'В метаданных указан feature.{0}, но столбец "{0}" не входит в список features!!' +
+    'Meta contains feature.{0}, but column "{0}" is not listed in features';
+  ER_DATASET_FEATURES_WILDCARD_REQUIRES_FEATURES =
+    'Ключ features.* допустим только когда задан список features!!' +
+    'Key features.* is only allowed when features are explicitly listed';
+  ER_DATASET_META_UNKNOWN_COLUMN_TYPE =
+    'Неизвестный тип столбца в метаданных: {0}!!Unknown column type in dataset meta: {0}';
+  ER_DATASET_TARGETTYPE_REQUIRES_TARGET =
+    'Ключ targetType допустим только когда задан target!!' +
+    'Key targetType is only allowed when target is defined';
   ER_CLASSES_ONLY_CLASSIFICATION =
     'Classes доступны только для задач классификации!!Classes are only available for classification datasets';
   ER_VALUECOUNTS_ONLY_CLASSIFICATION =
     'ValueCounts доступны только для задач классификации!!ValueCounts are only available for classification datasets';    
   ER_DATASET_TARGET_MISSING =
-    'Target обязателен для задач обучения с учителем!!Target is required for supervised learning datasets'; 
+    'Target обязателен для задач с учителем!!Target is required for supervised learning datasets'; 
+  ER_DATASET_TARGET_FOR_CLUSTERING =
+    'Target не должен задаваться для задачи кластеризации!!Target must not be specified for clustering datasets';
   ER_PARAM_LE =
     'Параметр {0} должен быть <= допустимого максимума!!Parameter {0} must be <= the allowed maximum value';
   ER_PARAM_RANGE_01 =
@@ -337,21 +407,241 @@ const
     'Слишком малое значение classBalance: {0}. Минимально допустимое значение — 1e-3!!classBalance is too small: {0}. Minimum allowed value is 1e-3';
   ER_UNSUPPORTED_TARGET_TYPE =
     'Неподдерживаемый тип целевого столбца: {0}!!Unsupported target column type: {0}';    
+  ER_DATASET_TARGET_HAS_MISSING =
+    'Целевой столбец "{0}" содержит пропуски (NA), что здесь не поддерживается!!' +
+    'Target column "{0}" contains missing values (NA), which is not supported here';
   ER_ENCODELABELS_UNSUPPORTED_TYPE =
     'Неподдерживаемый тип столбца для кодирования меток: {0}!!' +
     'Unsupported column type for label encoding: {0}';  
+  ER_LABEL_ENCODER_NOT_FITTED =
+    'LabelEncoder не обучен. Сначала вызовите Fit или FitTransform.!!' +
+    'LabelEncoder is not fitted. Call Fit or FitTransform first.';
+  ER_LABEL_ENCODER_UNKNOWN_CLASS =
+    'Неизвестная метка класса: {0}!!Unknown class label: {0}';
+  ER_LABEL_ENCODER_INDEX_OUT_OF_RANGE =
+    'Индекс класса вне диапазона: {0}!!Class index out of range: {0}';
   
   C_DATASET      = 'Датасет: {0}!!Dataset: {0}';
   C_DESCRIPTION  = 'Описание:!!Description:';
   C_TASK         = 'Задача: {0}!!Task: {0}';
   C_ROWS         = 'Строк: {0}!!Rows: {0}';
   C_FEATURES     = 'Признаков: {0}!!Features: {0}';
-  C_TARGET       = 'Цель: {0}!!Target: {0}';
+  C_TARGET_BLOCK = 'Целевой столбец:!!Target column:';
   C_NAME         = 'Имя: {0}!!Name: {0}';
   C_SOURCE       = 'Источник: {0}!!Source: {0}';
   C_URL          = 'Ссылка: {0}!!URL: {0}';
   C_CLASSES      = 'Классов: {0}!!Classes: {0}';
   C_FEATURE_LIST = 'Признаки:!!Features:';
+  C_CATEGORICAL  = 'Категориальные признаки: {0}!!Categorical features: {0}';
+
+function TaskDisplayName(task: TaskType): string;
+begin
+  case task of
+    TaskType.Classification: Result := 'классификация';
+    TaskType.Regression: Result := 'регрессия';
+    TaskType.Clustering: Result := 'кластеризация';
+    else Result := task.ToString;
+  end;
+end;
+
+function TryParseFeatureTypeKey(key: string; var columnName: string): boolean;
+begin
+  Result := False;
+  columnName := nil;
+
+  if (key = nil) or not key.StartsWith('feature.') then
+    exit;
+
+  columnName := key.Substring('feature.'.Length);
+  if (columnName = '') or (columnName.IndexOf('.') >= 0) then
+  begin
+    columnName := nil;
+    exit;
+  end;
+
+  Result := True;
+end;
+
+function TryParseMetaColumnType(s: string; var columnType: ColumnType; var isCategorical: boolean): boolean;
+begin
+  Result := True;
+  isCategorical := False;
+
+  case s.ToLower of
+    'int', 'integer':
+      columnType := ctInt;
+    'float', 'real', 'double':
+      columnType := ctFloat;
+    'str', 'string':
+      columnType := ctStr;
+    'bool', 'boolean':
+      columnType := ctBool;
+    'datetime', 'date', 'time':
+      columnType := ctDateTime;
+    'categorical':
+      begin
+        columnType := ctStr;
+        isCategorical := True;
+      end;
+  else
+    Result := False;
+  end;
+end;
+
+procedure ValidateDatasetMeta(meta: Dictionary<string,string>; target: string; features: array of string);
+begin
+  var featureSet := if features = nil then nil else new HashSet<string>(features);
+
+  foreach var key in meta.Keys do
+  begin
+    var colName: string;
+    if not TryParseFeatureTypeKey(key, colName) then
+      continue;
+
+    // Legacy-хвост: target раньше иногда описывался как feature.<target> = categorical.
+    // Не считаем это ошибкой, но и не рассматриваем target как признак.
+    if (target <> nil) and (colName = target) then
+      continue;
+
+    if featureSet = nil then
+      continue;
+
+    if not (colName in featureSet) then
+      ArgumentError(ER_DATASET_META_FEATURE_NOT_IN_FEATURES, colName);
+  end;
+
+  if meta.ContainsKey('features.*') and (featureSet = nil) then
+    ArgumentError(ER_DATASET_FEATURES_WILDCARD_REQUIRES_FEATURES);
+
+  if meta.ContainsKey('targetType') and ((target = nil) or (target = '')) then
+    ArgumentError(ER_DATASET_TARGETTYPE_REQUIRES_TARGET);
+end;
+
+procedure BuildFeatureTyping(
+  meta: Dictionary<string,string>;
+  target: string;
+  features: array of string;
+  var columnTypes: Dictionary<string, ColumnType>;
+  var categoricalColumns: array of string);
+begin
+  var typeMap := new Dictionary<string, ColumnType>;
+  var categoricalSet := new HashSet<string>;
+
+  if meta.ContainsKey('features.*') then
+  begin
+    var wildcardType: ColumnType;
+    var wildcardCategorical: boolean;
+
+    if not TryParseMetaColumnType(meta['features.*'], wildcardType, wildcardCategorical) then
+      ArgumentError(ER_DATASET_META_UNKNOWN_COLUMN_TYPE, meta['features.*']);
+
+    foreach var feature in features do
+    begin
+      if wildcardCategorical then
+        categoricalSet.Add(feature)
+      else
+        typeMap[feature] := wildcardType;
+    end;
+  end;
+
+  foreach var key in meta.Keys do
+  begin
+    var colName: string;
+    if not TryParseFeatureTypeKey(key, colName) then
+      continue;
+
+    if (target <> nil) and (colName = target) then
+      continue;
+
+    var t: ColumnType;
+    var isCategorical: boolean;
+    if not TryParseMetaColumnType(meta[key], t, isCategorical) then
+      ArgumentError(ER_DATASET_META_UNKNOWN_COLUMN_TYPE, meta[key]);
+
+    if isCategorical then
+    begin
+      typeMap.Remove(colName);
+      categoricalSet.Add(colName);
+    end
+    else
+    begin
+      categoricalSet.Remove(colName);
+      typeMap[colName] := t;
+    end;
+  end;
+
+  columnTypes := if typeMap.Count = 0 then nil else typeMap;
+  categoricalColumns := if categoricalSet.Count = 0 then nil else categoricalSet.ToArray;
+end;
+
+procedure ApplyTargetTyping(
+  meta: Dictionary<string,string>;
+  target: string;
+  var columnTypes: Dictionary<string, ColumnType>;
+  var categoricalColumns: array of string);
+begin
+  if (target = nil) or (target = '') or not meta.ContainsKey('targetType') then
+    exit;
+
+  var t: ColumnType;
+  var isCategorical: boolean;
+  if not TryParseMetaColumnType(meta['targetType'], t, isCategorical) then
+    ArgumentError(ER_DATASET_META_UNKNOWN_COLUMN_TYPE, meta['targetType']);
+
+  var cats := if categoricalColumns = nil then new HashSet<string> else new HashSet<string>(categoricalColumns);
+  var types := if columnTypes = nil then new Dictionary<string, ColumnType> else columnTypes;
+
+  if isCategorical then
+  begin
+    types.Remove(target);
+    cats.Add(target);
+  end
+  else
+  begin
+    cats.Remove(target);
+    types[target] := t;
+  end;
+
+  columnTypes := if types.Count = 0 then nil else types;
+  categoricalColumns := if cats.Count = 0 then nil else cats.ToArray;
+end;
+
+function HasExplicitTypeForColumn(
+  columnName: string;
+  columnTypes: Dictionary<string, ColumnType>;
+  categoricalColumns: array of string
+): boolean;
+begin
+  if (columnTypes <> nil) and columnTypes.ContainsKey(columnName) then
+    exit(True);
+
+  if categoricalColumns <> nil then
+    foreach var name in categoricalColumns do
+      if name = columnName then
+        exit(True);
+
+  Result := False;
+end;
+
+function CanSkipCsvInference(
+  features: array of string;
+  target: string;
+  columnTypes: Dictionary<string, ColumnType>;
+  categoricalColumns: array of string
+): boolean;
+begin
+  if features = nil then
+    exit(False);
+
+  foreach var feature in features do
+    if not HasExplicitTypeForColumn(feature, columnTypes, categoricalColumns) then
+      exit(False);
+
+  if (target <> nil) and (target <> '') and not HasExplicitTypeForColumn(target, columnTypes, categoricalColumns) then
+    exit(False);
+
+  Result := True;
+end;
     
 function Normal(rnd: System.Random): real;
 begin
@@ -392,12 +682,59 @@ begin
   Result := Task <> Clustering;
 end;
 
+class function Dataset.FromData(
+  df: DataFrame;
+  task: TaskType;
+  features: array of string;
+  target: string): Dataset;
+begin
+  if df = nil then
+    ArgumentNullError(ER_ARG_NULL, 'df');
+
+  if (features = nil) or (features.Length = 0) then
+    ArgumentError(ER_DATASET_FEATURES_EMPTY);
+
+  if task in [TaskType.Classification, TaskType.Regression] then
+  begin
+    if (target = nil) or (target = '') then
+      ArgumentError(ER_DATASET_TARGET_MISSING);
+
+    if not df.HasColumn(target) then
+      ArgumentError(ER_DATASET_TARGET_NOT_FOUND, target);
+  end
+  else if (target <> nil) and (target <> '') then
+    ArgumentError(ER_DATASET_TARGET_FOR_CLUSTERING);
+
+  Result := new Dataset;
+  Result.fData := df;
+  Result.Task := task;
+  Result.Features := Copy(features);
+  Result.Target := target;
+
+  foreach var f in Result.Features do
+  begin
+    if (f = nil) or (f = '') then
+      ArgumentError(ER_DATASET_FEATURE_NOT_FOUND, f);
+
+    if not df.HasColumn(f) then
+      ArgumentError(ER_DATASET_FEATURE_NOT_FOUND, f);
+
+    if (target <> nil) and (target <> '') and (f = target) then
+      ArgumentError(ER_DATASET_FEATURE_EQUALS_TARGET, f);
+
+    Result.FeatureLabels[f] := f;
+  end;
+
+  if (target <> nil) and (target <> '') then
+    Result.FeatureLabels[target] := target;
+end;
+
 function Dataset.CloneMeta(df: DataFrame): Dataset;
 begin
   Result := new Dataset;
 
   Result.Name := Name;
-  Result.Data := df;
+  Result.fData := df;
 
   Result.Features := Copy(Features);
   Result.Target := Target;
@@ -502,21 +839,49 @@ begin
     Println;
   end;
 
-  PrintlnTr(C_TASK, Task);
+  PrintlnTr(C_TASK, TaskDisplayName(Task));
   PrintlnTr(C_ROWS, Data.RowCount);
   PrintlnTr(C_FEATURES, Features.Length);
 
+  if CategoricalFeatures.Length > 0 then
+    PrintlnTr(C_CATEGORICAL, CategoricalFeatures.JoinToString(', '));
+
+  var labeledFeatures := Features
+    .Where(f -> FeatureLabels.ContainsKey(f) and (FeatureLabels[f] <> nil) and (FeatureLabels[f] <> '') and (FeatureLabels[f] <> f))
+    .ToArray;
+
+  var labelWidth := 0;
+  if labeledFeatures.Length > 0 then
+    labelWidth := labeledFeatures.Max(f -> f.Length);
   if (Target <> nil) and (Target <> '') then
-    PrintlnTr(C_TARGET, Target);
+    labelWidth := Max(labelWidth, Target.Length);
 
-  Println;
-
-  var maxLen := Features.Max(f -> f.Length);
-  
-  foreach var f in Features do
+  if (Target <> nil) and (Target <> '') then
   begin
-    var pad := new string(' ', maxLen - f.Length);
-    Println(f, pad, '→', FeatureLabels[f]);
+    Println;
+    Println(Tr(C_TARGET_BLOCK));
+
+    var hasTargetLabel :=
+      FeatureLabels.ContainsKey(Target) and
+      (FeatureLabels[Target] <> nil) and
+      (FeatureLabels[Target] <> '') and
+      (FeatureLabels[Target] <> Target);
+
+    if hasTargetLabel then
+      Println(Target.PadRight(labelWidth), ' → ', FeatureLabels[Target])
+    else
+      Println(Target);
+  end;
+
+  if labeledFeatures.Length > 0 then
+  begin
+    Println;
+    Println(Tr(C_FEATURE_LIST));
+    
+    foreach var f in labeledFeatures do
+    begin
+      Println(f.PadRight(labelWidth), ' → ', FeatureLabels[f]);
+    end;
   end;
 end;
 
@@ -529,8 +894,43 @@ begin
   var t := Data.GetColumnType(idx);
 
   case t of
-    ctStr: Result := Data.GetStrColumn(Target).Distinct.ToArray;
-    ctInt: Result := Data.GetIntColumn(Target).Distinct.Select(x -> x.ToString).ToArray;
+    ctStr:
+    begin
+      var col := StrColumn(Data.GetColumn(idx));
+      var classes := new List<string>;
+      var seen := new HashSet<string>;
+
+      for var i := 0 to Data.RowCount - 1 do
+      begin
+        if not col.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, Target);
+
+        var value := col.Data[i];
+        if seen.Add(value) then
+          classes.Add(value);
+      end;
+
+      Result := classes.ToArray;
+    end;
+
+    ctInt:
+    begin
+      var col := IntColumn(Data.GetColumn(idx));
+      var classes := new List<string>;
+      var seen := new HashSet<integer>;
+
+      for var i := 0 to Data.RowCount - 1 do
+      begin
+        if not col.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, Target);
+
+        var value := col.Data[i];
+        if seen.Add(value) then
+          classes.Add(value.ToString);
+      end;
+
+      Result := classes.ToArray;
+    end;
     else Error(ER_UNSUPPORTED_TARGET_TYPE, t);
   end;
 end;
@@ -545,30 +945,41 @@ begin
   case Data.GetColumnType(Target) of
 
     ColumnType.ctStr:
-      begin
-        var labels := Data.GetStrColumn(Target);
+    begin
+      var idx := Data.ColumnIndex(Target);
+      var labels := StrColumn(Data.GetColumn(idx));
 
-        foreach var v in labels do
-          if dict.ContainsKey(v) then
-            dict[v] += 1
-          else
-            dict[v] := 1;
+      for var i := 0 to Data.RowCount - 1 do
+      begin
+        if not labels.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, Target);
+
+        var v := labels.Data[i];
+        if dict.ContainsKey(v) then
+          dict[v] += 1
+        else
+          dict[v] := 1;
       end;
+    end;
 
     ColumnType.ctInt:
+    begin
+      var idx := Data.ColumnIndex(Target);
+      var labels := IntColumn(Data.GetColumn(idx));
+
+      for var i := 0 to Data.RowCount - 1 do
       begin
-        var labels := Data.GetIntColumn(Target);
+        if not labels.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, Target);
 
-        foreach var v in labels do
-        begin
-          var s := v.ToString;
+        var s := labels.Data[i].ToString;
 
-          if dict.ContainsKey(s) then
-            dict[s] += 1
-          else
-            dict[s] := 1;
-        end;
+        if dict.ContainsKey(s) then
+          dict[s] += 1
+        else
+          dict[s] := 1;
       end;
+    end;
 
     else
       ArgumentError(ER_ENCODELABELS_UNSUPPORTED_TYPE, Target);
@@ -604,9 +1015,173 @@ begin
     Result := Data.Schema.ColumnNames;
 end;
 
+function Dataset.GetCategoricalFeatures: array of string;
+begin
+  Result := Features
+    .Where(f -> Data.IsCategorical(f))
+    .ToArray;
+end;
+
 function Dataset.HasTarget: boolean;
 begin
   Result := (Target <> nil) and (Target <> '');
+end;
+
+
+//-----------------------------
+//        LabelEncoder
+//-----------------------------
+
+function LabelEncoder.GetClasses: array of string;
+begin
+  EnsureFitted;
+  Result := Copy(fClasses);
+end;
+
+procedure LabelEncoder.EnsureFitted;
+begin
+  if (fClasses = nil) or (fClassToIndex = nil) then
+    Error(ER_LABEL_ENCODER_NOT_FITTED);
+end;
+
+procedure LabelEncoder.CheckDataset(ds: Dataset);
+begin
+  if ds = nil then
+    ArgumentNullError(ER_ARG_NULL, 'ds');
+
+  if ds.Data = nil then
+    ArgumentNullError(ER_ARG_NULL, 'Data');
+
+  if ds.Task <> TaskType.Classification then
+    ArgumentError(ER_CLASSES_ONLY_CLASSIFICATION);
+
+  if not ds.HasTarget then
+    ArgumentError(ER_DATASET_TARGET_MISSING);
+
+  if not ds.Data.HasColumn(ds.Target) then
+    ArgumentError(ER_DATASET_TARGET_NOT_FOUND, ds.Target);
+end;
+
+function LabelEncoder.TargetLabels(ds: Dataset): array of string;
+begin
+  CheckDataset(ds);
+
+  case ds.Data.GetColumnType(ds.Target) of
+    ColumnType.ctStr:
+    begin
+      var idx := ds.Data.ColumnIndex(ds.Target);
+      var col := StrColumn(ds.Data.GetColumn(idx));
+      SetLength(Result, ds.Data.RowCount);
+
+      for var i := 0 to ds.Data.RowCount - 1 do
+      begin
+        if not col.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, ds.Target);
+        Result[i] := col.Data[i];
+      end;
+    end;
+
+    ColumnType.ctInt:
+    begin
+      var idx := ds.Data.ColumnIndex(ds.Target);
+      var col := IntColumn(ds.Data.GetColumn(idx));
+      SetLength(Result, ds.Data.RowCount);
+
+      for var i := 0 to ds.Data.RowCount - 1 do
+      begin
+        if not col.IsValid[i] then
+          ArgumentError(ER_DATASET_TARGET_HAS_MISSING, ds.Target);
+        Result[i] := col.Data[i].ToString;
+      end;
+    end;
+
+    else
+      ArgumentError(ER_ENCODELABELS_UNSUPPORTED_TYPE, ds.Target);
+  end;
+end;
+
+function LabelEncoder.Fit(ds: Dataset): LabelEncoder;
+begin
+  var labels := TargetLabels(ds);
+  
+  var classes := new List<string>;
+  fClassToIndex := new Dictionary<string, integer>;
+
+  foreach var labelName in labels do
+    if not fClassToIndex.ContainsKey(labelName) then
+    begin
+      fClassToIndex[labelName] := classes.Count;
+      classes.Add(labelName);
+    end;
+
+  fClasses := classes.ToArray;
+  Result := self;
+end;
+
+function LabelEncoder.Transform(ds: Dataset): array of integer;
+begin
+  EnsureFitted;
+
+  var labels := TargetLabels(ds);
+  var y := new integer[labels.Length];
+
+  for var i := 0 to labels.Length - 1 do
+  begin
+    var labelName := labels[i];
+
+    if not fClassToIndex.ContainsKey(labelName) then
+      ArgumentError(ER_LABEL_ENCODER_UNKNOWN_CLASS, labelName);
+
+    y[i] := fClassToIndex[labelName];
+  end;
+
+  Result := y;
+end;
+
+function LabelEncoder.FitTransform(ds: Dataset): array of integer;
+begin
+  Fit(ds);
+  Result := Transform(ds);
+end;
+
+function LabelEncoder.ClassName(index: integer): string;
+begin
+  EnsureFitted;
+
+  if (index < 0) or (index >= fClasses.Length) then
+    ArgumentError(ER_LABEL_ENCODER_INDEX_OUT_OF_RANGE, index);
+
+  Result := fClasses[index];
+end;
+
+function LabelEncoder.ClassIndex(name: string): integer;
+begin
+  EnsureFitted;
+
+  if not fClassToIndex.ContainsKey(name) then
+    ArgumentError(ER_LABEL_ENCODER_UNKNOWN_CLASS, name);
+
+  Result := fClassToIndex[name];
+end;
+
+function LabelEncoder.Decode(y: array of integer): array of string;
+begin
+  EnsureFitted;
+
+  if y = nil then
+    ArgumentNullError(ER_ARG_NULL, 'y');
+
+  Result := new string[y.Length];
+
+  for var i := 0 to y.Length - 1 do
+  begin
+    var index := y[i];
+
+    if (index < 0) or (index >= fClasses.Length) then
+      ArgumentError(ER_LABEL_ENCODER_INDEX_OUT_OF_RANGE, index);
+
+    Result[i] := fClasses[index];
+  end;
 end;
 
 
@@ -618,7 +1193,7 @@ static function Datasets.MakeBlobs(
   n, centers, nFeatures: integer;
   clusterStd, clusterStdVar, centerBox, classBalance: real;
   noisePoints: integer; shuffle: boolean;
-  seed: integer): (Matrix, Vector);
+  seed: integer): (Matrix, array of integer);
 begin
   if n <= 0 then
     ArgumentOutOfRangeError(ER_PARAM_GT_ZERO, 'n');
@@ -657,7 +1232,7 @@ begin
   var rnd := new System.Random(actualSeed);
   
   var X := new Matrix(n, nFeatures);
-  var y := new Vector(n);
+  var y := new integer[n];
   
   // --- центры
   var centersM := new Matrix(centers, nFeatures);
@@ -714,12 +1289,18 @@ begin
   begin
     var row := idx[i];
     
-    // --- выбор кластера (inline вместо функции)
-    var r := rnd.NextDouble;
-    var c := 0;
-    
-    while (c < centers - 1) and (r > cdf[c]) do
-      c += 1;
+    // --- выбор кластера
+    var c: integer;
+    if Abs(classBalance - 1.0) < 1e-12 then
+      c := i mod centers
+    else
+    begin
+      var r := rnd.NextDouble;
+      c := 0;
+      
+      while (c < centers - 1) and (r > cdf[c]) do
+        c += 1;
+    end;
     
     y[row] := c;
     
@@ -747,7 +1328,7 @@ static function Datasets.MakeMoons(
   n: integer;
   noise: real;
   shuffle: boolean;
-  seed: integer): (Matrix, Vector);
+  seed: integer): (Matrix, array of integer);
 begin
   if n <= 0 then
     ArgumentOutOfRangeError(ER_PARAM_GT_ZERO, 'n');
@@ -762,7 +1343,7 @@ begin
   var rnd := new System.Random(actualSeed);
   
   var X := new Matrix(n, 2);
-  var y := new Vector(n);
+  var y := new integer[n];
   
   var idx := Arr(0..n - 1);
   if shuffle then
@@ -893,7 +1474,7 @@ static function Datasets.MakeCircles(
   n: integer;
   noise, factor, classBalance, flipProb, scale: real;
   shuffle: boolean;
-  seed: integer): (Matrix, Vector);
+  seed: integer): (Matrix, array of integer);
 begin
   if n <= 0 then
     ArgumentOutOfRangeError(ER_PARAM_GT_ZERO, 'n');
@@ -920,7 +1501,7 @@ begin
   var rnd := new System.Random(actualSeed);
 
   var X := new Matrix(n, 2);
-  var y := new Vector(n);
+  var y := new integer[n];
 
   var idx := Arr(0..n-1);
   if shuffle then
@@ -966,7 +1547,7 @@ end;
 static function Datasets.MakeSpiral(
   n: integer; classes: integer;
   noise: real; turns: real; radius: real;
-  shuffle: boolean; seed: integer): (Matrix, Vector);
+  shuffle: boolean; seed: integer): (Matrix, array of integer);
 begin
   if n <= 0 then
     ArgumentOutOfRangeError(ER_PARAM_GT_ZERO, 'n');
@@ -990,7 +1571,7 @@ begin
   var rnd := new System.Random(actualSeed);
 
   var X := new Matrix(n,2);
-  var y := new Vector(n);
+  var y := new integer[n];
 
   var idx := Arr(0..n-1);
   if shuffle then
@@ -1043,7 +1624,7 @@ static function Datasets.MakeClassification(
   n, nFeatures, nInformative, nRedundant: integer;
   noise, classSep, flipProb, classBalance: real;
   shuffle: boolean;
-  seed: integer): (Matrix, Vector);
+  seed: integer): (Matrix, array of integer);
 begin
   if n <= 0 then
     ArgumentOutOfRangeError(ER_PARAM_GT_ZERO, 'n');
@@ -1082,7 +1663,7 @@ begin
   var rnd := new System.Random(actualSeed);
 
   var X := new Matrix(n, nFeatures);
-  var y := new Vector(n);
+  var y := new integer[n];
   
   // --- направление разделения классов
   var center := new Vector(nInformative);
@@ -1173,12 +1754,41 @@ begin
   if not meta.ContainsKey('task') then
     ArgumentError(ER_DATASET_TASK_MISSING, name);
 
-  var df := DataFrame.FromCsv(csvPath);
+  var task := ParseTask(meta['task']);
+  var target := if task in [TaskType.Regression, TaskType.Classification] then
+    if meta.ContainsKey('target') then meta['target'] else nil
+  else
+    nil;
+  var features := ParseFeatures(meta);
+
+  if task in [TaskType.Regression, TaskType.Classification] then
+    if target = nil then
+      ArgumentError(ER_DATASET_TARGET_MISSING, name);
+
+  ValidateDatasetMeta(meta, target, features);
+  
+  var columnTypes: Dictionary<string, ColumnType>;
+  var categoricalColumns: array of string;
+  BuildFeatureTyping(meta, target, features, columnTypes, categoricalColumns);
+  ApplyTargetTyping(meta, target, columnTypes, categoricalColumns);
+
+  var canSkipInference := CanSkipCsvInference(features, target, columnTypes, categoricalColumns);
+
+  var df := DataFrame.FromCsv(
+    csvPath,
+    ',',
+    True,
+    columnTypes,
+    categoricalColumns,
+    1000,
+    not canSkipInference,
+    not canSkipInference
+  );
 
   var ds := new Dataset;
 
   ds.Name := name;
-  ds.Data := df;
+  ds.fData := df;
   
   // --- description
   ds.Description := '';
@@ -1190,19 +1800,11 @@ begin
   else if meta.ContainsKey('description.en') then
     ds.Description := meta['description.en'];
 
-  ds.Task := ParseTask(meta['task']);
+  ds.Task := task;
   
-  if ds.Task in [TaskType.Regression, TaskType.Classification] then
-  begin
-    if not meta.ContainsKey('target') then
-      ArgumentError(ER_DATASET_TARGET_MISSING, name);
-  
-    ds.Target := meta['target'];
-  end
-  else
-    ds.Target := nil;
+  ds.Target := target;
     
-  ds.Features := ParseFeatures(meta);
+  ds.Features := features;
   
   ds.FeatureLabels := [];
   foreach var f in ds.Features do
@@ -1213,6 +1815,19 @@ begin
       ds.FeatureLabels[f] := meta[key]
     else
       ds.FeatureLabels[f] := f;
+  end;
+
+  if (ds.Target <> nil) and (ds.Target <> '') then
+  begin
+    var targetKey := 'target.' + Datasets.Language;
+    var legacyTargetKey := 'feature.' + ds.Target + '.' + Datasets.Language;
+
+    if meta.ContainsKey(targetKey) then
+      ds.FeatureLabels[ds.Target] := meta[targetKey]
+    else if meta.ContainsKey(legacyTargetKey) then
+      ds.FeatureLabels[ds.Target] := meta[legacyTargetKey]
+    else
+      ds.FeatureLabels[ds.Target] := ds.Target;
   end;
   
   ds.ValueLabels := [];
@@ -1255,50 +1870,32 @@ end;
 
 static function Datasets.Iris: Dataset;
 begin
-  var ds := Load('Iris');
-
-  ds.Data := ds.Data.SetCategorical([
-    'species'
-  ]);
-
-  Result := ds;
+  Result := Load('Iris');
 end;
 
 static function Datasets.MoscowHousing: Dataset;
 begin
-  var ds := Load('moscow_housing');
-
-  ds.Data := ds.Data.SetCategorical([
-    'renovation'
-  ]);
-
-  Result := ds;
+  Result := Load('moscow_housing');
 end;
 
 static function Datasets.RussianCities: Dataset;
 begin
-  var ds := Load('russian_cities');
-
-  ds.Data := ds.Data.SetCategorical([
-    'region_name',
-    'federal_district'
-  ]);
-
-  Result := ds;
+  Result := Load('russian_cities');
 end;
 
 static function Datasets.TitanicRu: Dataset;
 begin
-  var ds := Load('titanic_ru');
+  Result := Load('titanic_ru');
+end;
 
-  ds.Data := ds.Data.SetCategorical([
-    'Выжил',
-    'Класс',
-    'Пол',
-    'ПортПосадки'
-  ]);
+static function Datasets.UsedCarsPrice: Dataset;
+begin
+  Result := Load('used_cars_price');
+end;
 
-  Result := ds;
+static function Datasets.MnistSmall: Dataset;
+begin
+  Result := Load('mnist_small');
 end;
 
 {static function Datasets.StudentExam: Dataset;

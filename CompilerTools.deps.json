@@ -1,0 +1,102 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "CompilerTools/1.0.0": {
+        "dependencies": {
+          "Errors": "1.0.0",
+          "Localization": "1.0.0",
+          "SemanticTree": "1.0.0",
+          "SyntaxTree": "1.0.0"
+        },
+        "runtime": {
+          "CompilerTools.dll": {}
+        }
+      },
+      "Errors/1.0.0": {
+        "dependencies": {
+          "Localization": "1.0.0",
+          "SemanticTree": "1.0.0",
+          "SyntaxTree": "1.0.0"
+        },
+        "runtime": {
+          "Errors.dll": {
+            "assemblyVersion": "4.0.0.3883",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "Localization/1.0.0": {
+        "runtime": {
+          "Localization.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "SemanticTree/1.0.0": {
+        "runtime": {
+          "SemanticTree.dll": {
+            "assemblyVersion": "4.0.0.3883",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "StringConstants/1.0.0": {
+        "runtime": {
+          "StringConstants.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "SyntaxTree/1.0.0": {
+        "dependencies": {
+          "StringConstants": "1.0.0"
+        },
+        "runtime": {
+          "SyntaxTree.dll": {
+            "assemblyVersion": "4.0.0.3883",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "CompilerTools/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Errors/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Localization/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "SemanticTree/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "StringConstants/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "SyntaxTree/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
