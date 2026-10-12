@@ -1,3 +1,6 @@
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20termux%20(Android)-blue)
+---
 [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 ---
 ![Logo](logo.svg)
