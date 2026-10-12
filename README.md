@@ -100,8 +100,8 @@ pip3 install textual
 (It is advisable to install DotNet, but it is not required.)
 
 ```bash
-sudo apt install dotnet-runtime-8.0
-```
+  curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
+ ```
 
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git

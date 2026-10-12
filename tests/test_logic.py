@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pascaltui import completions as C, files, i18n, settings, templates, themes  # noqa: E402
+from pascaltui import completions as C, files, highlight as H, i18n, settings, templates, themes  # noqa: E402
 
 
 class CompletionTests(unittest.TestCase):
@@ -67,6 +67,52 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual((row, col), (1, 2))
         text, row, col = C.expand_snippet("a\n\t$0", "  ", "  ")   # курсор на строке с отступом
         self.assertEqual((row, col), (1, 4))
+
+
+class HighlightTests(unittest.TestCase):
+    def setUp(self):
+        self.sets = C.CompletionEngine.from_files().word_sets()
+
+    def kinds(self, line, state_lines=None):
+        lines = state_lines or [line]
+        out = H.tokenize(lines, self.sets)
+        return [(lines[i][a:b], k) for i, spans in enumerate(out) for a, b, k in spans]
+
+    def test_basic(self):
+        got = self.kinds("begin writeln('hi'); x := 3.14 + $FF; // note")
+        self.assertIn(("begin", "keyword"), got)
+        self.assertIn(("writeln", "function.call"), got)
+        self.assertIn(("'hi'", "string"), got)
+        self.assertIn(("3.14", "number"), got)
+        self.assertIn(("$FF", "number"), got)
+        self.assertEqual(got[-1], ("// note", "comment"))
+
+    def test_case_insensitive_and_types(self):
+        got = self.kinds("VAR a: Integer; TRUE")
+        self.assertIn(("VAR", "keyword"), got)
+        self.assertIn(("Integer", "type"), got)
+        self.assertIn(("TRUE", "boolean"), got)
+
+    def test_string_escape_and_keyword_inside_string(self):
+        got = self.kinds("s := 'it''s begin';")
+        self.assertIn(("'it''s begin'", "string"), got)
+        self.assertNotIn(("begin", "keyword"), got)
+
+    def test_multiline_comments(self):
+        lines = ["x := 1; { start", "begin inside", "end } y := 2;", "(* a", "b *) z"]
+        got = self.kinds("", lines)
+        comments = [t for t, k in got if k == "comment"]
+        self.assertEqual(comments, ["{ start", "begin inside", "end }", "(* a", "b *)"])
+        self.assertNotIn(("begin", "keyword"), got)
+        self.assertEqual([t for t, k in got if k == "number"], ["1", "2"])
+
+    def test_identifier_with_digits_is_not_number(self):
+        got = self.kinds("x1 := 5")
+        self.assertEqual([t for t, k in got if k == "number"], ["5"])
+
+    def test_unterminated_string_to_eol(self):
+        got = self.kinds("x := 'abc")
+        self.assertIn(("'abc", "string"), got)
 
 
 class SettingsTests(unittest.TestCase):

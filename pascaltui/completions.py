@@ -198,6 +198,21 @@ class CompletionEngine:
         items.sort(key=lambda c: (KIND_ORDER[c.kind], len(c.trigger), c.trigger.lower()))
         self._items = items
 
+    def word_sets(self):
+        """Слова для подсветки: (ключевые слова, типы, функции) в нижнем регистре."""
+        from .highlight import WordSets
+
+        sets = WordSets()
+        for c in self._items:
+            low = c.trigger.lower()
+            if c.kind == "keyword":
+                sets.keywords.add(low)
+            elif c.kind == "type":
+                sets.types.add(low)
+            elif c.kind == "function":
+                sets.functions.add(low)
+        return sets
+
     def suggest(
         self,
         prefix: str,

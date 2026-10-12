@@ -108,7 +108,7 @@ pip3 install textual
 (Бажано встановити DotNet, але не обов'язково.)
 
 ```bash
-sudo apt install dotnet-runtime-8.0
+  curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
 ```
 
 ```bash

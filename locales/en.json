@@ -149,5 +149,6 @@
   "cmd_general": "Settings: Language & templates…",
   "cmd_general_help": "Window: interface language and new file template",
   "cmd_run": "Settings: Run & paths…",
-  "cmd_run_help": "Window: Mono/Dotnet, compile timeout, compiler, projects folder"
+  "cmd_run_help": "Window: Mono/Dotnet, compile timeout, compiler, projects folder",
+  "set_syntax_highlight": "Syntax highlighting"
 }

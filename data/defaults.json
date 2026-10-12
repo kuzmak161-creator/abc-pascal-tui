@@ -6,21 +6,20 @@
     "start_template": "hello",
     "runtime": "mono",
     "compile_timeout": 60,
-
     "autocomplete": true,
     "autocomplete_min_chars": 2,
     "autocomplete_max_items": 8,
     "autocomplete_buffer": true,
     "autocomplete_snippets": true,
     "autocomplete_accept_enter": false,
-
     "auto_close_brackets": true,
     "auto_indent": true,
     "tab_width": 2,
     "tab_inserts_indent": true,
     "show_line_numbers": true,
     "soft_wrap": false,
-    "save_on_quit": true
+    "save_on_quit": true,
+    "syntax_highlight": true
   },
   "runtime_config": {
     "runtimeOptions": {

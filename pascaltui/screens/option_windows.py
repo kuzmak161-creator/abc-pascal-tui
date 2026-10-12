@@ -60,7 +60,7 @@ class AutocompleteScreen(_Window):
     CSS = "AutocompleteScreen { align: center middle; background: rgba(0,0,0,0.6); }" + _CSS
     SWITCHES = ("autocomplete", "autocomplete_buffer", "autocomplete_snippets", "autocomplete_accept_enter",
                 "auto_close_brackets", "auto_indent", "tab_inserts_indent", "show_line_numbers",
-                "soft_wrap", "save_on_quit")
+                "soft_wrap", "save_on_quit", "syntax_highlight")
     INTS = ("autocomplete_min_chars", "autocomplete_max_items", "tab_width")
 
     def __init__(self, lang: str, settings: dict):

@@ -7,6 +7,7 @@ from textual.binding import Binding
 from textual.widgets import OptionList, TextArea
 from textual.widgets.option_list import Option
 
+from .highlight import tokenize
 from .completions import (
     KIND_MARK,
     Completion,
@@ -40,6 +41,31 @@ class CompletionPopup(OptionList):
     can_focus = False
 
 
+_DEFAULT_SYNTAX = {
+    "keyword": ("#b05ac8", True, False),
+    "type": ("#2f9e9e", False, False),
+    "string": ("#5a9e3c", False, False),
+    "comment": ("#7a8a99", False, True),
+    "number": ("#c27c2c", False, False),
+    "function.call": ("#3a8fd8", False, False),
+    "boolean": ("#c27c2c", True, False),
+}
+
+
+def _pascal_css_theme():
+    """Копия темы "css" с цветами подсветки (у самой "css" их может не быть)."""
+    from dataclasses import replace
+
+    from rich.style import Style
+    from textual.widgets.text_area import TextAreaTheme
+
+    base = TextAreaTheme.get_builtin_theme("css")
+    styles = dict(base.syntax_styles)
+    for name, (color, bold, italic) in _DEFAULT_SYNTAX.items():
+        styles.setdefault(name, Style(color=color, bold=bold, italic=italic))
+    return replace(base, name="pascal-css", syntax_styles=styles)
+
+
 class CodeEditor(TextArea):
     BINDINGS = [
         Binding("ctrl+space,ctrl+@,f3", "complete", "Complete", show=False),
@@ -62,7 +88,10 @@ class CodeEditor(TextArea):
         self._skip_next = False
         self._force = False
         self._broken = False  # True — подсказки сломались в этой версии Textual, отключены
+        self._hl_broken = False  # True — подсветка не подошла этой версии Textual
+        self._hl_sets = engine.word_sets()
         self.indent_width = int(settings.get("tab_width", 2))
+        self._rehighlight()
 
     # ------------------------------------------------------
     # настройка
@@ -80,12 +109,48 @@ class CodeEditor(TextArea):
         self.soft_wrap = bool(settings.get("soft_wrap", False))
         self.tab_behavior = "indent" if settings.get("tab_inserts_indent", True) else "focus"
         self.indent_width = int(settings.get("tab_width", 2))
+        if editor_theme == "css":
+            try:
+                self.register_theme(_pascal_css_theme())
+                editor_theme = "pascal-css"
+            except Exception:  # noqa: BLE001 — нет нужных классов, остаёмся на "css"
+                pass
         try:
             self.theme = editor_theme
         except Exception:  # noqa: BLE001 — неизвестная тема редактора
             pass
         if not settings.get("autocomplete", True):
             self.hide_popup()
+        self._rehighlight()
+
+    # ------------------------------------------------------
+    # подсветка синтаксиса
+    # ------------------------------------------------------
+    def _build_highlight_map(self) -> None:
+        """Подменяет построение подсветки (в Textual оно рассчитано на tree-sitter)."""
+        settings = getattr(self, "_s", {})
+        if settings.get("syntax_highlight", True) and not getattr(self, "_hl_broken", False):
+            try:
+                highlights = self._highlights
+                highlights.clear()
+                spans_per_line = tokenize(self.text.split("\n"), self._hl_sets)
+                for row, spans in enumerate(spans_per_line):
+                    if spans:
+                        highlights[row] = list(spans)
+                return
+            except Exception:  # noqa: BLE001 — другая версия Textual: отключаем подсветку
+                self._hl_broken = True
+        try:
+            super()._build_highlight_map()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _rehighlight(self) -> None:
+        try:
+            self._build_highlight_map()
+            self.refresh()
+        except Exception:  # noqa: BLE001
+            pass
 
     # ------------------------------------------------------
     # всплывающий список
