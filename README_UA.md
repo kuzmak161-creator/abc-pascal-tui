@@ -17,7 +17,7 @@ abc-pascal-tui — це IDE для Паскаля, заснована на ко�
 </p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.jpg" alt="Інтерфейс у графічному середовищі" width="400">
+  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Інтерфейс у графічному середовищі" width="400">
 </p>
 
 ---
