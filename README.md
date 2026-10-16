@@ -4,7 +4,8 @@
 [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 ---
 ![Logo](logo.svg)
-
+---
+# [TELEGRAM CHANNEL](https://t.me/abcpascaltui_dev)
 ## DESCRIPTION
 abc-pascal-tui is an IDE for Pascal based on the PascalABC.NET compiler, utilizing a Python-based TUI (Text User Interface).
 
