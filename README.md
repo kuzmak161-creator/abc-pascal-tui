@@ -4,10 +4,10 @@
 [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md) [![Русский](https://img.shields.io/badge/Language-Русский-blue?style=for-the-badge)](README_RU.md)
 ---
 ![Logo](logo.svg)
----
-# [TELEGRAM CHANNEL](https://t.me/abcpascaltui_dev)
 ## DESCRIPTION
 abc-pascal-tui is an IDE for Pascal based on the PascalABC.NET compiler, utilizing a Python-based TUI (Text User Interface).
+---
+## [TELEGRAM CHANNEL](https://t.me/abcpascaltui_dev)
 
 ## REQUIREMENTS
 Before installing the IDE, ensure you have Python, Mono, Git, and the Textual library installed. DotNet is not required yet (it is needed for running binaries that do not work correctly under Mono).
