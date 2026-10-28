@@ -48,4 +48,3 @@ cd pascalabcnet
 ```bash
 dotnet build pabcnetc.sln -c Release -p:PABCNET_LEGACY_ONLY=true -p:TargetFramework=net472 -o "abc-pascal-tui"
 ```
-```
