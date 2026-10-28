@@ -139,9 +139,9 @@ bash install.sh
 
 ## гайд по збиранню компілятора
 
-- 🇬🇧 [In English (EN)](doc/BUILD.md)
-- 🇷🇺 [На русском (RU)](doc/BUILD_RU.md)
-- 🇺🇦 [На українській (UA)](doc/BUILD_UA.md)
+- 🇬🇧 [In English (EN)](docs/BUILD.md)
+- 🇷🇺 [На русском (RU)](docs/BUILD_RU.md)
+- 🇺🇦 [На українській (UA)](docs/BUILD_UA.md)
 
 В офіційних релізах оновлення виходять рідше.
 
