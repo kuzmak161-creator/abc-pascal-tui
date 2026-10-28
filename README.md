@@ -129,6 +129,12 @@ cd ~/abc-pascal-tui && git pull
 bash install.sh
 ```
 
+## Compiler Build Guide
+
+- 🇬🇧 [In English (EN)](doc/BUILD.md)
+- 🇷🇺 [На русском (RU)](doc/BUILD_RU.md)
+- 🇺🇦 [На українській (UA)](doc/BUILD_UA.md)
+
 Updates are released less frequently in official releases.
 
 License

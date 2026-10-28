@@ -137,6 +137,12 @@ cd ~/abc-pascal-tui && git pull
 bash install.sh
 ```
 
+## гайд по збиранню компілятора
+
+- 🇬🇧 [In English (EN)](doc/BUILD.md)
+- 🇷🇺 [На русском (RU)](doc/BUILD_RU.md)
+- 🇺🇦 [На українській (UA)](doc/BUILD_UA.md)
+
 В офіційних релізах оновлення виходять рідше.
 
 ---
