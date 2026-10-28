@@ -133,7 +133,7 @@ bash install.sh
 
 - 🇬🇧 [In English (EN)](docs/BUILD.md)
 - 🇷🇺 [На русском (RU)](docs/BUILD_RU.md)
-- 🇺🇦 [На українській (UA)](docs/BUILD_UA.md)
+- 🇺🇦 [Українською (UA)](docs/BUILD_UA.md)
 ---
 Updates are released less frequently in official releases.
 
