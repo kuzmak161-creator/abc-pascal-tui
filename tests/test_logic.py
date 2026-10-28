@@ -112,7 +112,12 @@ class HighlightTests(unittest.TestCase):
 
     def test_unterminated_string_to_eol(self):
         got = self.kinds("x := 'abc")
-        self.assertIn(("'abc", "string"), got)
+        self.assertFalse(any(k == "string" for _, k in got))  # незакрытая строка — без подсветки
+
+    def test_quote_after_letter_is_not_a_string(self):
+        got = self.kinds("x := y'z; w := 'ok';")
+        self.assertIn(("'ok'", "string"), got)
+        self.assertEqual(sum(1 for _, k in got if k == "string"), 1)
 
 
 class SettingsTests(unittest.TestCase):

@@ -1,21 +1,18 @@
-"""Подсветка синтаксиса Pascal (без tree-sitter, чистый Python).
-
-tokenize() возвращает для каждой строки список (начало, конец, имя_стиля).
-Имена стилей совпадают с темами TextArea: keyword, type, string, comment,
-number, function.call, boolean.
-"""
+"""Подсветка синтаксиса Pascal (без tree-sitter, чистый Python)."""
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 
+# Токенизатор
 _TOKEN = re.compile(
-    r"//[^\n]*"                      # комментарий до конца строки
-    r"|\{|\(\*"                      # начало { } или (* *)
-    r"|'(?:[^']|'')*'?"              # строка ('' — экранированная кавычка)
-    r"|\$[0-9A-Fa-f]+"               # hex-число
-    r"|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"  # число
-    r"|[^\W\d]\w*"                   # идентификатор / слово
+    r"//[^\n]*"
+    r"|\{|\}"
+    r"|\(\*|\*\)"
+    r"|'(?:[^']|'')*'?"
+    r"|\$[0-9A-Fa-f]+"
+    r"|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
+    r"|[^\W\d]\w*"
 )
 
 _BOOLEANS = {"true", "false", "nil"}
@@ -42,54 +39,69 @@ def classify(word: str, sets: WordSets) -> str | None:
 
 
 def tokenize(lines: list[str], sets: WordSets) -> list[list[tuple[int, int, str]]]:
-    """Подсвечивает весь документ; многострочные комментарии переносятся между строками."""
+    """Подсвечивает весь документ, аккуратно обходя ASCII-арт."""
     result: list[list[tuple[int, int, str]]] = []
-    state: str | None = None  # None | "brace" | "paren"
+    state = None
+
     for line in lines:
         spans: list[tuple[int, int, str]] = []
         n = len(line)
         pos = 0
+
         while pos < n:
-            if state is not None:
-                closer = "}" if state == "brace" else "*)"
-                end = line.find(closer, pos)
+            if state == "brace":
+                end = line.find("}", pos)
                 if end < 0:
-                    spans.append((pos, n, "comment"))
-                    pos = n
+                    spans.append((pos, n, "comment")); pos = n
                 else:
-                    end += len(closer)
-                    spans.append((pos, end, "comment"))
-                    pos = end
-                    state = None
+                    spans.append((pos, end + 1, "comment")); pos = end + 1; state = None
                 continue
+            elif state == "paren":
+                end = line.find("*)", pos)
+                if end < 0:
+                    spans.append((pos, n, "comment")); pos = n
+                else:
+                    spans.append((pos, end + 2, "comment")); pos = end + 2; state = None
+                continue
+
             m = _TOKEN.search(line, pos)
             if not m:
                 break
+
             start, end = m.span()
             text = m.group()
+
             if text.startswith("//"):
-                spans.append((start, n, "comment"))
-                pos = n
-            elif text == "{" or text == "(*":
-                closer = "}" if text == "{" else "*)"
-                close_at = line.find(closer, end)
+                spans.append((start, n, "comment")); pos = n
+            elif text == "{":
+                close_at = line.find("}", end)
                 if close_at < 0:
-                    spans.append((start, n, "comment"))
-                    state = "brace" if text == "{" else "paren"
-                    pos = n
+                    spans.append((start, n, "comment")); state = "brace"; pos = n
                 else:
-                    spans.append((start, close_at + len(closer), "comment"))
-                    pos = close_at + len(closer)
+                    spans.append((start, close_at + 1, "comment")); pos = close_at + 1
+            elif text == "(*":
+                close_at = line.find("*)", end)
+                if close_at < 0:
+                    spans.append((start, n, "comment")); state = "paren"; pos = n
+                else:
+                    spans.append((start, close_at + 2, "comment")); pos = close_at + 2
             elif text[0] == "'":
-                spans.append((start, end, "string"))
+                # Защита от ASCII-арта: кавычка сразу после буквы/цифры строку не начинает
+                if start > 0 and (line[start - 1].isalnum() or line[start - 1] == "_"):
+                    pos = start + 1
+                    continue
+                # токен-регулярка уже захватила строку целиком (с '' внутри) до закрывающей кавычки;
+                # если закрывающей нет — это не строка, оставляем без подсветки
+                if len(text) >= 2 and text.endswith("'"):
+                    spans.append((start, end, "string"))
                 pos = end
             elif text[0].isdigit() or text[0] == "$":
-                spans.append((start, end, "number"))
-                pos = end
+                spans.append((start, end, "number")); pos = end
             else:
                 kind = classify(text, sets)
                 if kind:
                     spans.append((start, end, kind))
                 pos = end
+
         result.append(spans)
     return result

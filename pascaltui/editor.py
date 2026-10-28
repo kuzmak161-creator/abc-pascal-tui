@@ -1,13 +1,14 @@
 """Редактор кода: TextArea + автодополнение + автозакрытие скобок + автоотступы."""
 from __future__ import annotations
 
+import time
+
 from rich.text import Text
 from textual import events
 from textual.binding import Binding
 from textual.widgets import OptionList, TextArea
 from textual.widgets.option_list import Option
 
-from .highlight import tokenize
 from .completions import (
     KIND_MARK,
     Completion,
@@ -18,6 +19,10 @@ from .completions import (
     opens_block,
     scan_context,
 )
+from .highlight import tokenize
+
+PASTE_GAP = 0.02
+PASTE_HOLD = 0.3
 
 PAIRS = {"(": ")", "[": "]", "{": "}", "'": "'"}
 CLOSERS = {")", "]", "}", "'"}
@@ -25,8 +30,6 @@ _SAFE_NEXT = set(")]};,")
 
 
 class CompletionPopup(OptionList):
-    """Панель подсказок под редактором. Не получает фокус — ввод остаётся в редакторе."""
-
     DEFAULT_CSS = """
     CompletionPopup {
         display: none;
@@ -41,61 +44,38 @@ class CompletionPopup(OptionList):
     can_focus = False
 
 
-_DEFAULT_SYNTAX = {
-    "keyword": ("#b05ac8", True, False),
-    "type": ("#2f9e9e", False, False),
-    "string": ("#5a9e3c", False, False),
-    "comment": ("#7a8a99", False, True),
-    "number": ("#c27c2c", False, False),
-    "function.call": ("#3a8fd8", False, False),
-    "boolean": ("#c27c2c", True, False),
-}
-
-
-def _pascal_css_theme():
-    """Копия темы "css" с цветами подсветки (у самой "css" их может не быть)."""
-    from dataclasses import replace
-
-    from rich.style import Style
-    from textual.widgets.text_area import TextAreaTheme
-
-    base = TextAreaTheme.get_builtin_theme("css")
-    styles = dict(base.syntax_styles)
-    for name, (color, bold, italic) in _DEFAULT_SYNTAX.items():
-        styles.setdefault(name, Style(color=color, bold=bold, italic=italic))
-    return replace(base, name="pascal-css", syntax_styles=styles)
-
-
 class CodeEditor(TextArea):
     BINDINGS = [
         Binding("ctrl+space,ctrl+@,f3", "complete", "Complete", show=False),
     ]
 
-    def __init__(self, text: str, engine: CompletionEngine, settings: dict, language: str | None = "pascal", **kwargs):
+    def __init__(self, text: str, engine: CompletionEngine, settings: dict, **kwargs):
+        # Атрибуты для подсветки должны быть созданы ДО super().__init__,
+        # так как Textual вызывает _build_highlight_map() внутри него.
+        self._s: dict = dict(settings)
+        self._hl_sets = engine.word_sets()
+        self._hl_broken = False
+
         super().__init__(
             text,
-            language=language,
+            language=None,
             soft_wrap=bool(settings.get("soft_wrap", False)),
             show_line_numbers=bool(settings.get("show_line_numbers", True)),
             tab_behavior="indent" if settings.get("tab_inserts_indent", True) else "focus",
             **kwargs,
         )
+        
         self.engine = engine
-        self._s: dict = dict(settings)
         self._popup: CompletionPopup | None = None
         self._items: list[Completion] = []
         self._refresh_pending = False
         self._skip_next = False
         self._force = False
-        self._broken = False  # True — подсказки сломались в этой версии Textual, отключены
-        self._hl_broken = False  # True — подсветка не подошла этой версии Textual
-        self._hl_sets = engine.word_sets()
+        self._last_key_time = 0.0
+        self._paste_until = 0.0
+        self._broken = False
         self.indent_width = int(settings.get("tab_width", 2))
-        self._rehighlight()
 
-    # ------------------------------------------------------
-    # настройка
-    # ------------------------------------------------------
     def attach_popup(self, popup: CompletionPopup) -> None:
         self._popup = popup
 
@@ -109,52 +89,97 @@ class CodeEditor(TextArea):
         self.soft_wrap = bool(settings.get("soft_wrap", False))
         self.tab_behavior = "indent" if settings.get("tab_inserts_indent", True) else "focus"
         self.indent_width = int(settings.get("tab_width", 2))
+        
         if editor_theme == "css":
             try:
-                self.register_theme(_pascal_css_theme())
+                self._register_pascal_theme()
                 editor_theme = "pascal-css"
-            except Exception:  # noqa: BLE001 — нет нужных классов, остаёмся на "css"
+            except Exception:
                 pass
+                
         try:
             self.theme = editor_theme
-        except Exception:  # noqa: BLE001 — неизвестная тема редактора
+        except Exception:
             pass
+            
         if not settings.get("autocomplete", True):
             self.hide_popup()
         self._rehighlight()
 
-    # ------------------------------------------------------
-    # подсветка синтаксиса
-    # ------------------------------------------------------
+    def _register_pascal_theme(self):
+        from dataclasses import replace
+        from rich.style import Style
+        from textual.widgets.text_area import TextAreaTheme
+
+        base = TextAreaTheme.get_builtin_theme("css")
+        styles = dict(base.syntax_styles)
+        styles.setdefault("keyword", Style(color="#b05ac8", bold=True))
+        styles.setdefault("type", Style(color="#2f9e9e"))
+        styles.setdefault("string", Style(color="#5a9e3c"))
+        styles.setdefault("comment", Style(color="#7a8a99", italic=True))
+        styles.setdefault("number", Style(color="#c27c2c"))
+        styles.setdefault("function.call", Style(color="#3a8fd8"))
+        styles.setdefault("boolean", Style(color="#c27c2c", bold=True))
+        
+        new_theme = replace(base, name="pascal-css", syntax_styles=styles)
+        self.register_theme(new_theme)
+
     def _build_highlight_map(self) -> None:
-        """Подменяет построение подсветки (в Textual оно рассчитано на tree-sitter)."""
+        """Заполняем штатный _highlights Textual нашими спанами."""
         settings = getattr(self, "_s", {})
-        if settings.get("syntax_highlight", True) and not getattr(self, "_hl_broken", False):
+        hl_broken = getattr(self, "_hl_broken", False)
+        
+        if not settings.get("syntax_highlight", True) or hl_broken:
             try:
-                highlights = self._highlights
-                highlights.clear()
-                spans_per_line = tokenize(self.text.split("\n"), self._hl_sets)
-                for row, spans in enumerate(spans_per_line):
-                    if spans:
-                        highlights[row] = list(spans)
-                return
-            except Exception:  # noqa: BLE001 — другая версия Textual: отключаем подсветку
-                self._hl_broken = True
+                self._highlights.clear()  # иначе после выключения остаются старые цвета
+            except Exception:
+                pass
+            return
+            
         try:
-            super()._build_highlight_map()
-        except Exception:  # noqa: BLE001
-            pass
+            self._highlights.clear()
+            hl_sets = getattr(self, "_hl_sets", None)
+            if hl_sets is None:
+                return
+                
+            spans_per_line = tokenize(self.text.split("\n"), hl_sets)
+            for row, spans in enumerate(spans_per_line):
+                if spans:
+                    self._highlights[row] = list(spans)
+        except Exception:
+            self._hl_broken = True
+
+    def _clear_render_caches(self) -> None:
+        """Сбрасывает кэши отрисованных строк Textual.
+
+        Иначе после правки текста на экране могут остаться «призраки» старых строк:
+        подсвеченные части обновляются, а неподсвеченные берутся из кэша.
+        Ищем кэши по типу, а не по имени: внутренние имена меняются между версиями Textual.
+        """
+        for value in list(vars(self).values()):
+            if type(value).__name__ in ("LRUCache", "FIFOCache"):
+                try:
+                    value.clear()
+                except Exception:
+                    pass
+
+    def _repaint(self) -> None:
+        self._clear_render_caches()
+        self.refresh()
 
     def _rehighlight(self) -> None:
         try:
             self._build_highlight_map()
+            self._clear_render_caches()
             self.refresh()
-        except Exception:  # noqa: BLE001
+            self.call_after_refresh(self._repaint)  # вторая перерисовка, когда Textual закончил правку
+        except Exception:
             pass
 
-    # ------------------------------------------------------
-    # всплывающий список
-    # ------------------------------------------------------
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        self._rehighlight()
+        self._schedule_refresh()
+
     def _popup_open(self) -> bool:
         return bool(self._popup is not None and self._popup.display)
 
@@ -191,14 +216,20 @@ class CodeEditor(TextArea):
             return
         try:
             self._refresh_inner(force)
-        except Exception:  # noqa: BLE001 — не роняем редактор из-за подсказок
+        except Exception:
             self._broken = True
             try:
                 self.hide_popup()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
+    def _pasting(self) -> bool:
+        return time.monotonic() < self._paste_until
+
     def _refresh_inner(self, force: bool) -> None:
+        if self._pasting():
+            self.hide_popup()
+            return
         if self._skip_next:
             self._skip_next = False
             self.hide_popup()
@@ -237,14 +268,10 @@ class CodeEditor(TextArea):
     def action_complete(self) -> None:
         self._schedule_refresh(force=True)
 
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        self._schedule_refresh()
-
     def on_text_area_selection_changed(self, event: TextArea.SelectionChanged) -> None:
         self._schedule_refresh()
 
     def on_blur(self, event: events.Blur) -> None:
-        # небольшая задержка: клик по подсказке на миг забирает фокус
         self.set_timer(0.4, self._hide_if_unfocused)
 
     def _hide_if_unfocused(self) -> None:
@@ -269,11 +296,15 @@ class CodeEditor(TextArea):
             self.move_cursor((row + rel_row, rel_col))
         self.focus()
 
-    # ------------------------------------------------------
-    # клавиши
-    # ------------------------------------------------------
     async def _on_key(self, event: events.Key) -> None:
         key = event.key
+        now = time.monotonic()
+        if now - self._last_key_time < PASTE_GAP:
+            self._paste_until = now + PASTE_HOLD
+        self._last_key_time = now
+        if now < self._paste_until:
+            self.hide_popup()
+            return
 
         if self._popup_open() and self._popup is not None:
             if key == "down":
@@ -316,16 +347,12 @@ class CodeEditor(TextArea):
         event.stop()
         event.prevent_default()
 
-    # ------------------------------------------------------
-    # умные правки
-    # ------------------------------------------------------
     def _smart_enter(self) -> bool:
         row, col = self.cursor_location
         line = self.document.get_line(row)
         before, after = line[:col], line[col:]
         indent = leading_indent(before)
         extra = self.unit if opens_block(before) else ""
-        # пробелы сразу после курсора «съедаем», чтобы хвост строки не получил лишний отступ
         skip = len(after) - len(after.lstrip(" \t"))
         self.replace("\n" + indent + extra, (row, col), (row, col + skip))
         self.move_cursor((row + 1, len(indent) + len(extra)))
@@ -354,7 +381,6 @@ class CodeEditor(TextArea):
         if ctx == "comment":
             return False
 
-        # перешагнуть уже стоящий закрывающий символ
         if ch in CLOSERS and nxt == ch:
             if ch != "'" or ctx == "string":
                 self.move_cursor((row, col + 1))
@@ -362,7 +388,7 @@ class CodeEditor(TextArea):
 
         if ch == "'":
             if ctx == "string":
-                return False  # это закрывающая кавычка — обычный ввод
+                return False
             if prev and (prev.isalnum() or prev == "_"):
                 return False
         elif ch not in PAIRS:
@@ -379,8 +405,4 @@ class CodeEditor(TextArea):
 
 
 def make_editor(text: str, engine: CompletionEngine, settings: dict, **kwargs) -> CodeEditor:
-    """Создаёт редактор; если язык 'pascal' не поддержан в этой сборке Textual — без подсветки."""
-    try:
-        return CodeEditor(text, engine, settings, language="pascal", **kwargs)
-    except Exception:  # noqa: BLE001
-        return CodeEditor(text, engine, settings, language=None, **kwargs)
+    return CodeEditor(text, engine, settings, **kwargs)

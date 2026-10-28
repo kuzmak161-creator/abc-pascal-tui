@@ -59,7 +59,7 @@ class FileMenuScreen(ModalScreen):
         margin-bottom: 1;
     }
     .half_btn {
-        width: 1fr;
+        width: 50%;
         margin-right: 1;
     }
     """
