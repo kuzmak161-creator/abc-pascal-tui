@@ -109,7 +109,7 @@ curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --c
 ```
 
 ```bash
-git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
+git clone https://github.com/kuzmak161-creator/abc-pascal-tui
 ```
 
 ```bash
