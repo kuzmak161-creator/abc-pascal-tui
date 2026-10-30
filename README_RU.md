@@ -97,7 +97,7 @@ sudo apt install git -y
 ```bash
 sudo apt install python3 -y
 ```
-`(Флаг --break-system-packages нужен на новых версиях Debian для установки пакета в систему без venv.)`
+(--break-system-packages нужен для установки без venv.)
 ```bash
 pip3 install textual --break-system-packages
 ```
