@@ -154,6 +154,3 @@ else
     exit 1
 fi
 
-# --- Самоудаление (как в README) ---
-echo "$MSG_REMOVE"
-rm -- "$0"
