@@ -63,7 +63,6 @@ The script will ask you to select a language (English / Русский / Укр�
 
 · Copy all project files (including the tui script) to /usr/share/abc-pascal-tui (or $PREFIX/share/abc-pascal-tui in Termux if $PREFIX is set).
 · Create the pascal-tui command in /bin (or $PREFIX/bin) that runs the installed tui script.
-· Delete itself after successful installation.
 
 After installation, you can run the IDE from anywhere using the command:
 
