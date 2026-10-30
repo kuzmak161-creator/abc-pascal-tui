@@ -1,26 +1,31 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20termux%20(Android)-blue)
+
 ---
+
 [![Українська](https://img.shields.io/badge/Language-Українська-yellow?style=for-the-badge)](README_UA.md) [![English](https://img.shields.io/badge/Language-English-green?style=for-the-badge)](README.md)
 
 ---
+
 ![Logo](logo.svg)
 
 ## ОПИСАНИЕ
+
 abc-pascal-tui — это IDE для Pascal на основе компилятора PascalABC.NET, использующая TUI (текстовый интерфейс) на Python.
 
 ## ТРЕБОВАНИЯ
+
 Перед установкой IDE убедитесь, что у вас установлены Python, Mono, Git и библиотека Textual. DotNet не обязателен (он нужен для запуска бинарников, которые некорректно работают под Mono).
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
-<p>
+  <img src="Ico/screenshot%20one.jpeg" alt="Интерфейс Pascal TUI" width="400">
+</p>
 
 <p align="center">
-  <img src="https://github.com/kuzmak161-creator/abc-pascal-tui/blob/main/Ico/screenshot%20two.png" alt="Интерфейс в граф окружении" width="400">
-<p>
+  <img src="Ico/screenshot%20two.png" alt="Интерфейс в графическом окружении" width="400">
+</p>
 
-# Инструкция для Termux
+## Инструкция для Termux
 
 ```bash
 pkg install mono -y
@@ -37,7 +42,9 @@ pkg install git -y
 ```bash
 pip install textual
 ```
+
 (Желательно установить DotNet, но это не обязательно.)
+
 ```bash
 pkg install dotnet-runtime-8.0
 ```
@@ -50,7 +57,7 @@ git clone https://github.com/kuzmak161-creator/abc-pascal-tui
 cd abc-pascal-tui
 ```
 
-## Установка
+### Установка
 
 После клонирования запустите установщик из корня репозитория:
 
@@ -59,8 +66,9 @@ bash install.sh
 ```
 
 Скрипт попросит выбрать язык (English / Русский / Українська), после чего:
-- скопирует все файлы проекта (включая скрипт `tui`) в `/usr/share/abc-pascal-tui` (или `$PREFIX/share/abc-pascal-tui` в Termux, если задана переменная `$PREFIX`),
-- создаст команду `pascal-tui` в `/bin` (или `$PREFIX/bin`), которая запускает установленный скрипт `tui`,
+
+- скопирует все файлы проекта (включая скрипт `tui`) в `/usr/share/abc-pascal-tui` (или `$PREFIX/share/abc-pascal-tui` в Termux, если задана переменная `$PREFIX`);
+- создаст команду `pascal-tui` в `/bin` (или `$PREFIX/bin`), которая запускает установленный скрипт `tui`.
 
 После установки вы сможете запускать IDE из любого места командой:
 
@@ -69,57 +77,78 @@ pascal-tui
 ```
 
 Настройки будут сохраняться в:
+
 ```
 ~/.config/abc-pascal-tui/settings.json
 ```
 
-# Инструкция для Debian
+## Инструкция для Debian
+
 (протестировано на Arm-версиях и mx linux x86_64)
 
-
 ```bash
-sudo apt install mono-complete 
+sudo apt install mono-complete
 ```
+
 ```bash
 sudo apt install git -y
 ```
+
 ```bash
 sudo apt install python3 -y
 ```
+`(Флаг --break-system-packages нужен на новых версиях Debian для установки пакета в систему без venv.)`
 ```bash
-pip3 install textual
+pip3 install textual --break-system-packages
 ```
+
 (Желательно установить DotNet, но это не обязательно.)
+
 ```bash
-  curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --runtime dotnet --channel 8.0
 ```
 
 ```bash
 git clone https://github.com/kuzmak161-creator/abc-pascal-tui.git
 ```
+
 ```bash
 cd abc-pascal-tui
 ```
 
-Запустите установщик:
+Запустите установщик (нужны права root, так как файлы устанавливаются в `/usr/share` и `/bin`):
+
 ```bash
-bash install.sh
+sudo bash install.sh
 ```
+
 ---
-### Команда для обновления папки с IDE.
+
+## Обновление
+
+Обновите папку с IDE:
+
 ```bash
-cd ~/abc-pascal-tui && git pull
+cd /.../abc-pascal-tui && git pull
 ```
-```ash
+
+Затем снова запустите установщик (`bash install.sh` в Termux, `sudo bash install.sh` в Debian):
+
+```bash
 bash install.sh
 ```
-## Гайд по сборке компилятора 
+
+Обновления в официальных релизах выходят реже.
+
+---
+
+## Гайд по сборке компилятора
 
 - 🇬🇧 [In English (EN)](docs/BUILD.md)
 - 🇷🇺 [На русском (RU)](docs/BUILD_RU.md)
 - 🇺🇦 [Українською (UA)](docs/BUILD_UA.md)
+
 ---
-### Обновления в официальных релизах выходят реже.
 
 ## Лицензия
 
