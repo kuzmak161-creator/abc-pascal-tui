@@ -40,7 +40,7 @@ pkg install git -y
 ```
 
 ```bash
-pip install textual
+pip install textual 
 ```
 
 (It is advisable to install DotNet, but it is not required.)
@@ -97,7 +97,7 @@ sudo apt install git -y
 ```bash
 sudo apt install python3 -y
 ```
-(add --break-system-packages if pip blocks the installation)
+(--break-system-packages is needed to install without venv.)
 ```bash
 pip3 install textual --break-system-packages
 ```
