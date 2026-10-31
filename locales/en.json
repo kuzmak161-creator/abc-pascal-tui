@@ -150,5 +150,13 @@
   "cmd_general_help": "Window: interface language and new file template",
   "cmd_run": "Settings: Run & paths…",
   "cmd_run_help": "Window: Mono/Dotnet, compile timeout, compiler, projects folder",
-  "set_syntax_highlight": "Syntax highlighting"
+  "set_syntax_highlight": "Syntax highlighting",
+ "menu_up": "⬆️ Up",
+"menu_new_dir": "➕ New folder",
+"dlg_create_dir_title": "📝 Enter folder name:",
+"log_dir_created": "[Created folder: {name}]\n",
+"log_dir_deleted": "[Deleted folder: {name}]\n",
+"log_dir_renamed": "[Renamed folder: {old} → {new}]\n",
+"log_dir_copied": "[Copied folder: {old} → {new}]\n",
+"close_tab": "Close tab"
 }

@@ -1,4 +1,4 @@
-"""Операции с файлами проектов (без UI). Ошибки возвращаются кодами, а не исключениями."""
+"""Операции с файлами и папками проектов (без UI). Ошибки возвращаются кодами, а не исключениями."""
 from __future__ import annotations
 
 import os
@@ -8,10 +8,30 @@ SIDECAR_EXTS = (".exe", ".runtimeconfig.json")
 _BAD_CHARS = set('/\\\0:*?"<>|')
 
 
+def list_dir(dir_path: str) -> list[tuple[str, bool]]:
+    """Возвращает список (имя, is_dir) для папок и .pas файлов (сначала папки, потом файлы)."""
+    if not os.path.isdir(dir_path):
+        return []
+    items = []
+    for f in os.listdir(dir_path):
+        full = os.path.join(dir_path, f)
+        if os.path.isdir(full):
+            items.append((f, True))
+        elif f.endswith(".pas"):
+            items.append((f, False))
+    return sorted(items, key=lambda x: (not x[1], x[0].lower()))
+
+
 def project_files(projects_dir: str) -> list[str]:
+    """Рекурсивно собирает все .pas файлы для счетчика."""
     if not os.path.isdir(projects_dir):
         return []
-    return sorted(f for f in os.listdir(projects_dir) if f.endswith(".pas"))
+    res = []
+    for root, _, files in os.walk(projects_dir):
+        for f in files:
+            if f.endswith(".pas"):
+                res.append(os.path.relpath(os.path.join(root, f), projects_dir))
+    return sorted(res)
 
 
 def auto_filename(projects_dir: str) -> str:
@@ -31,6 +51,14 @@ def normalize_filename(name: str) -> tuple[str | None, str | None]:
     if not name or any(ch in _BAD_CHARS for ch in name):
         return None, "bad_name"
     return name + ".pas", None
+
+
+def normalize_dirname(name: str) -> tuple[str | None, str | None]:
+    """-> (имя_папки, None) или (None, 'bad_name')."""
+    name = (name or "").strip().strip(".")
+    if not name or any(ch in _BAD_CHARS for ch in name):
+        return None, "bad_name"
+    return name, None
 
 
 def read_text(path: str) -> tuple[str, str | None]:
@@ -69,6 +97,21 @@ def create_file(projects_dir: str, name: str, code: str) -> tuple[str | None, st
     return (None, f"io:{err}") if err else (path, None)
 
 
+def create_dir(parent_dir: str, name: str) -> tuple[str | None, str | None]:
+    """Создаёт папку."""
+    dirname, err = normalize_dirname(name)
+    if err:
+        return None, err
+    path = os.path.join(parent_dir, dirname)
+    if os.path.exists(path):
+        return None, "exists"
+    try:
+        os.makedirs(path)
+        return path, None
+    except OSError as e:
+        return None, f"io:{e}"
+
+
 def rename_file(projects_dir: str, old_name: str, new_name: str) -> tuple[str | None, str | None]:
     filename, err = normalize_filename(new_name)
     if err:
@@ -89,6 +132,21 @@ def rename_file(projects_dir: str, old_name: str, new_name: str) -> tuple[str | 
     return new_path, None
 
 
+def rename_dir(parent_dir: str, old_name: str, new_name: str) -> tuple[str | None, str | None]:
+    dirname, err = normalize_dirname(new_name)
+    if err:
+        return None, err
+    old_path = os.path.join(parent_dir, old_name)
+    new_path = os.path.join(parent_dir, dirname)
+    if os.path.exists(new_path):
+        return None, "exists"
+    try:
+        os.rename(old_path, new_path)
+    except OSError as e:
+        return None, f"io:{e}"
+    return new_path, None
+
+
 def copy_file(projects_dir: str, src_name: str, new_name: str) -> tuple[str | None, str | None]:
     filename, err = normalize_filename(new_name)
     if err:
@@ -104,6 +162,21 @@ def copy_file(projects_dir: str, src_name: str, new_name: str) -> tuple[str | No
     return dst, None
 
 
+def copy_dir(parent_dir: str, src_name: str, new_name: str) -> tuple[str | None, str | None]:
+    dirname, err = normalize_dirname(new_name)
+    if err:
+        return None, err
+    src = os.path.join(parent_dir, src_name)
+    dst = os.path.join(parent_dir, dirname)
+    if os.path.exists(dst):
+        return None, "exists"
+    try:
+        shutil.copytree(src, dst)
+    except OSError as e:
+        return None, f"io:{e}"
+    return dst, None
+
+
 def delete_file(projects_dir: str, name: str) -> str | None:
     path = os.path.join(projects_dir, name)
     try:
@@ -113,6 +186,16 @@ def delete_file(projects_dir: str, name: str) -> str | None:
             p = os.path.splitext(path)[0] + ext
             if os.path.exists(p):
                 os.remove(p)
+    except OSError as e:
+        return f"io:{e}"
+    return None
+
+
+def delete_dir(parent_dir: str, name: str) -> str | None:
+    path = os.path.join(parent_dir, name)
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
     except OSError as e:
         return f"io:{e}"
     return None

@@ -257,6 +257,89 @@ class EditorLogicTests(unittest.TestCase):
         self.assertEqual(ed.text, "x")
 
 
+class TabsTests(unittest.TestCase):
+    """Логика вкладок: id по полному пути, без затирания и потерь."""
+
+    def setUp(self):
+        from pascaltui.screens import tabs as T
+
+        self.T = T
+
+        class FakeCE:
+            def __init__(self, text, engine, settings, id=None):
+                self.text, self.id, self.focused = text, id, False
+
+            def attach_popup(self, popup):
+                pass
+
+            def focus(self):
+                self.focused = True
+
+        T.CodeEditor = FakeCE
+        tabs = T.EditorTabs.__new__(T.EditorTabs)
+        tabs.engine, tabs.settings = None, {}
+        tabs._editors, tabs._paths, tabs._popup = {}, {}, None
+        tabs.active = ""
+        tabs.panes, tabs.removed = [], []
+        tabs.add_pane = lambda pane: tabs.panes.append(pane)
+        tabs.remove_pane = lambda tid: tabs.removed.append(tid)
+        self.tabs = tabs
+
+    def test_ids_are_valid_identifiers(self):
+        import re
+
+        for name in ["main.pas", "лаба 1.pas", "1.pas", "a/b/ж.pas", "x" * 300 + ".pas"]:
+            tid = self.T.tab_id_for("/p/" + name)
+            self.assertRegex(tid, r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+    def test_same_basename_in_different_folders(self):
+        a, b = "/p/lab1/main.pas", "/p/lab2/main.pas"
+        self.assertNotEqual(self.T.tab_id_for(a), self.T.tab_id_for(b))
+        self.tabs.open_file_tab(a, "AAA")
+        self.tabs.open_file_tab(b, "BBB")
+        self.assertEqual(len(self.tabs.open_paths()), 2)
+        self.assertEqual(self.tabs.active_path(), "/p/lab2/main.pas")
+        self.assertEqual(self.tabs.get_active_editor().text, "BBB")
+
+    def test_reopen_does_not_overwrite_unsaved_edits(self):
+        self.tabs.open_file_tab("/p/a.pas", "disk")
+        self.tabs.get_active_editor().text = "edited"
+        self.tabs.open_file_tab("/p/a.pas", "disk")
+        self.assertEqual(self.tabs.get_active_editor().text, "edited")
+        self.tabs.open_file_tab("/p/a.pas", "fresh", reload=True)
+        self.assertEqual(self.tabs.get_active_editor().text, "fresh")
+
+    def test_active_path_follows_active_tab(self):
+        self.tabs.open_file_tab("/p/a.pas", "A")
+        self.tabs.open_file_tab("/p/b.pas", "B")
+        self.tabs.active = self.T.tab_id_for("/p/a.pas")      # пользователь нажал на первую вкладку
+        self.assertEqual(self.tabs.active_path(), "/p/a.pas")
+        self.assertEqual(self.tabs.get_active_file_name(), "a.pas")   # а не id вида «a_pas»
+
+    def test_close_under_folder_not_prefix_collision(self):
+        for p in ["/p/lab1/a.pas", "/p/lab1/sub/b.pas", "/p/lab10/c.pas", "/p/lab1.pas"]:
+            self.tabs.open_file_tab(p, "x")
+        closed = self.tabs.close_under("/p/lab1")
+        self.assertEqual(sorted(closed), ["/p/lab1/a.pas", "/p/lab1/sub/b.pas"])
+        self.assertEqual(sorted(self.tabs.open_paths()), ["/p/lab1.pas", "/p/lab10/c.pas"])
+
+    def test_close_returns_path_and_clears_state(self):
+        self.tabs.open_file_tab("/p/a.pas", "A")
+        tid = self.tabs.active
+        self.assertEqual(self.tabs.close_file_tab(tid), "/p/a.pas")
+        self.assertEqual(self.tabs.open_paths(), [])
+        self.assertIsNone(self.tabs.close_file_tab(tid))
+
+    def test_replace_tab_when_not_new(self):
+        self.tabs.open_file_tab("/p/a.pas", "A")
+        self.tabs.open_file_tab("/p/b.pas", "B", new_tab=False)
+        self.assertEqual(self.tabs.open_paths(), ["/p/b.pas"])
+
+    def test_is_inside(self):
+        self.assertTrue(self.T.is_inside("/p/a/b.pas", "/p/a"))
+        self.assertFalse(self.T.is_inside("/p/ab/b.pas", "/p/a"))
+
+
 class ImportTests(unittest.TestCase):
     def test_all_ui_modules_import(self):
         from pascaltui import app  # noqa: F401
@@ -267,7 +350,7 @@ class ImportTests(unittest.TestCase):
         from pascaltui.app import make_bindings
         ru = {b.key: b.description for b in make_bindings("ru") if b.show}
         en = {b.key: b.description for b in make_bindings("en") if b.show}
-        self.assertEqual(set(ru), {"ctrl+q", "ctrl+o", "ctrl+r", "ctrl+s", "f2"})
+        self.assertEqual(set(ru), {"ctrl+q", "ctrl+o", "ctrl+r", "ctrl+s", "ctrl+w", "f2"})
         for key in ru:
             self.assertTrue(ru[key] and en[key])
             self.assertNotEqual(ru[key], en[key], key)

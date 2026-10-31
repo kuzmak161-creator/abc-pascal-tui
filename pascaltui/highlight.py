@@ -105,3 +105,18 @@ def tokenize(lines: list[str], sets: WordSets) -> list[list[tuple[int, int, str]
 
         result.append(spans)
     return result
+
+
+def to_byte_offsets(line: str, spans):
+    """Позиции из символов в байты UTF-8.
+
+    Textual рассчитан на tree-sitter, у которого позиции считаются в байтах, а потом сам
+    переводит их обратно в символы. Кириллица занимает 2 байта, поэтому без пересчёта цвет
+    на строках с русским/украинским текстом заканчивается раньше, чем нужно.
+    """
+    if not spans or line.isascii():
+        return spans
+    prefix = [0]
+    for ch in line:
+        prefix.append(prefix[-1] + len(ch.encode("utf-8")))
+    return [(prefix[a], prefix[b], kind) for a, b, kind in spans]

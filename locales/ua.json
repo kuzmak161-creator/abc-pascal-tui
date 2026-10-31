@@ -150,5 +150,13 @@
   "cmd_general_help": "вікно: інтерфейс та шаблони нового файлу",
   "cmd_run": "налаштування: Запуск та шляхи…",
   "cmd_run_help": "вікно: Mono/Dotnet, ліміт компіляції, компілятор, папка проєктів",
-  "set_syntax_highlight": "Підсвітка синтаксису"
+  "set_syntax_highlight": "Підсвітка синтаксису",
+   "menu_up": "⬆️ Вгору",
+"menu_new_dir": "➕ Нова папка",
+"dlg_create_dir_title": "📝 Введіть ім'я папки:",
+"log_dir_created": "[Створено папку: {name}]\n",
+"log_dir_deleted": "[Видалено папку: {name}]\n",
+"log_dir_renamed": "[Перейменовано папку: {old} → {new}]\n",
+"log_dir_copied": "[Скопійовано папку: {old} → {new}]\n",
+"close_tab": "Close tab"
 }

@@ -19,7 +19,7 @@ from .completions import (
     opens_block,
     scan_context,
 )
-from .highlight import tokenize
+from .highlight import to_byte_offsets, tokenize
 
 PASTE_GAP = 0.02
 PASTE_HOLD = 0.3
@@ -142,10 +142,12 @@ class CodeEditor(TextArea):
             if hl_sets is None:
                 return
                 
-            spans_per_line = tokenize(self.text.split("\n"), hl_sets)
+            lines = self.text.split("\n")
+            spans_per_line = tokenize(lines, hl_sets)
             for row, spans in enumerate(spans_per_line):
                 if spans:
-                    self._highlights[row] = list(spans)
+                    # Textual хранит позиции подсветки в байтах UTF-8 (как tree-sitter)
+                    self._highlights[row] = list(to_byte_offsets(lines[row], spans))
         except Exception:
             self._hl_broken = True
 

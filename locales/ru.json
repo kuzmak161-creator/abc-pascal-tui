@@ -150,5 +150,13 @@
   "cmd_general_help": "Окно: язык интерфейса и шаблон нового файла",
   "cmd_run": "Настройки: Запуск и пути…",
   "cmd_run_help": "Окно: Mono/Dotnet, лимит компиляции, компилятор, папка проектов",
-  "set_syntax_highlight": "Подсветка синтаксиса"
+  "set_syntax_highlight": "Подсветка синтаксиса",
+  "menu_up": "⬆️ Вверх",
+"menu_new_dir": "➕ Новая папка",
+"dlg_create_dir_title": "📝 Введите имя папки:",
+"log_dir_created": "[Создана папка: {name}]\n",
+"log_dir_deleted": "[Удалена папка: {name}]\n",
+"log_dir_renamed": "[Переименована папка: {old} → {new}]\n",
+"log_dir_copied": "[Скопирована папка: {old} → {new}]\n",
+"close_tab": "Закрыть вкладку"
 }

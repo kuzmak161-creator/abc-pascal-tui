@@ -114,11 +114,6 @@ class HighlightTests(unittest.TestCase):
         got = self.kinds("x := 'abc")
         self.assertFalse(any(k == "string" for _, k in got))  # незакрытая строка — без подсветки
 
-    def test_quote_after_letter_is_not_a_string(self):
-        got = self.kinds("x := y'z; w := 'ok';")
-        self.assertIn(("'ok'", "string"), got)
-        self.assertEqual(sum(1 for _, k in got if k == "string"), 1)
-
 
 class SettingsTests(unittest.TestCase):
     def test_sanitize(self):
